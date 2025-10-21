@@ -1,0 +1,6 @@
+.fixed-header {
+    position: sticky; /* header sticks on scroll */
+    top: 0;
+    z-index: 1030; /* stays above sidebar and content */
+    background-color: #ffffff;
+}
