@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
-import "../styles/fixedHeader.css";
+import "../styles/fixedheader.css";
 import { db, collection, getDocs } from "../firebase";
 
 const FixedHeader = ({ onSearchChange }) => {
