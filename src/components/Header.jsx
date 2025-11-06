@@ -1,7 +1,12 @@
+// Header.jsx
+
 import React from "react";
 import { Offcanvas } from "bootstrap";
+// REMOVE the unnecessary import of LogoutConfirmation since it's now handled in App.jsx
+// import LogoutConfirmation from "./Auth/LogoutConfirmation"; 
 
-const Header = () => {
+// --- CHANGE: Accept 'onLogout' prop ---
+const Header = ({ onLogout }) => { 
   // Open mobile sidebar
   const openSidebar = () => {
     const offcanvasEl = document.getElementById("mobileSidebarOffcanvas");
@@ -37,7 +42,8 @@ const Header = () => {
       <button
         className="btn btn-sm text-white fw-bold"
         style={{ backgroundColor: "#ff0404ff", padding: "0.375rem 1rem" }}
-      >
+        // --- CHANGE: Call the 'onLogout' prop function ---
+        onClick={onLogout}> 
         Logout
       </button>
     </nav>

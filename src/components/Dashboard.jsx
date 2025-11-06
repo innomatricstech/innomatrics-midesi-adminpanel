@@ -1,5 +1,6 @@
 import "../styles/Dashboard.css"
 import FixedHeader from "./FixedHeader";
+import "../styles/dashboard.css"
 
 // Simplified Card Component for reusability
 const StatCard = ({ title, value, percentage, icon, colorClass, percentageColor }) => (

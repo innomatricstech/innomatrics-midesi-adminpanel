@@ -26,6 +26,7 @@ const Sidebar = ({ activeItem, onSelect }) => {
         { name: "Brands", icon: "💎" },
         { name: "Banners", icon: "🖼️" },
         { name: "Youtube Videos", icon: "⏯️" },
+        { name: "Stock Notifier", icon: "📈" }, // ✅ Added here
       ],
     },
     {
@@ -33,8 +34,9 @@ const Sidebar = ({ activeItem, onSelect }) => {
       items: [
         { name: "Wallet", icon: "💳" },
         { name: "Referral", icon: "🤝" },
+        { name: "Recharge Request", icon: "💸" },
         { name: "Recharge Provider", icon: "📶" },
-        { name: "Recharge Request", icon: "📱" },
+        { name: "Recharge Plan", icon: "📱" },
         { name: "Partner Management", icon: "🧑‍💼" },
         { name: "Customer Details", icon: "👤" },
       ],
@@ -57,16 +59,21 @@ const Sidebar = ({ activeItem, onSelect }) => {
                   href="#"
                   onClick={(e) => {
                     e.preventDefault();
-                    onSelect(item.name); // Update App state
+                    onSelect(item.name);
                   }}
                   className={`nav-link ${
-                    activeItem === item.name ? "active" : "text-dark hover-bg-light"
+                    activeItem === item.name
+                      ? "active"
+                      : "text-dark hover-bg-light"
                   } p-2 mb-1 mx-2 d-flex align-items-center`}
                   {...(isMobileView && { "data-bs-dismiss": "offcanvas" })}
                 >
                   <span
                     className="me-2 fs-6 sidebar-icon"
-                    style={{ transition: "transform 0.2s ease-out", display: "inline-block" }}
+                    style={{
+                      transition: "transform 0.2s ease-out",
+                      display: "inline-block",
+                    }}
                   >
                     {item.icon}
                   </span>
@@ -118,10 +125,10 @@ const Sidebar = ({ activeItem, onSelect }) => {
             {!collapsed && <span className="fs-4 fw-bolder text-dark">Desi</span>}
           </div>
         </div>
+
         {renderNav(false)}
-        {!collapsed && (
-          <div className="mt-auto pt-3 text-center">© 2025 MiDesi</div>
-        )}
+
+        {!collapsed && <div className="mt-auto pt-3 text-center">© 2025 MiDesi</div>}
       </div>
     </>
   );
