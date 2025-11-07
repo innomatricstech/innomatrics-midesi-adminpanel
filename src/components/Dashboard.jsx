@@ -1,5 +1,7 @@
-import FixedHeader from "./FixedHeader";
-import "../styles/dashboard.css"
+import React, { useState, useEffect } from "react";
+import "bootstrap/dist/css/bootstrap.min.css";
+import "../styles/fixedHeader.css";
+
 
 // Simplified Card Component for reusability
 const StatCard = ({ title, value, percentage, icon, colorClass, percentageColor }) => (
