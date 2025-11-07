@@ -11,7 +11,7 @@ import {
   updateDoc,
   deleteDoc,
   doc,
-  serverTimestamp,
+  // Removed serverTimestamp
 } from "../firebase";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
@@ -134,7 +134,7 @@ const BrandList = () => {
         brandName: newBrand.brandName,
         brandImage: brandImageURL,
         backGroundImage: bgImageURL,
-        createdAt: serverTimestamp(),
+      // Removed any potential createdAt or updatedAt field here
       });
 
       await updateDoc(docRef, { brandId: docRef.id });
@@ -179,7 +179,7 @@ const BrandList = () => {
         brandName: editBrand.brandName,
         brandImage: brandImageURL,
         backGroundImage: bgImageURL,
-        updatedAt: serverTimestamp(),
+        // Removed any potential updatedAt field here
       };
       
       await updateDoc(docRef, updatedData);
@@ -426,13 +426,6 @@ const BrandList = () => {
               </div>
             </div>
             
-            {/* Display Timestamps if available */}
-            {(viewBrand.createdAt?.toDate || viewBrand.updatedAt?.toDate) && (
-                <div className="mt-4 pt-3 border-top small text-muted">
-                    {viewBrand.createdAt?.toDate && <p className="mb-1">**Created:** {viewBrand.createdAt.toDate().toLocaleString()}</p>}
-                    {viewBrand.updatedAt?.toDate && <p className="mb-0">**Updated:** {viewBrand.updatedAt.toDate().toLocaleString()}</p>}
-                </div>
-            )}
           </div>
         </ModalWrapper>
       )}
