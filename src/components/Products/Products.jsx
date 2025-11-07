@@ -1,407 +1,483 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import FixedHeader from "../FixedHeader";
 import "bootstrap/dist/css/bootstrap.min.css";
-import { 
-  collection, 
-  getDocs, 
-  doc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  db 
-} from "../../firebase"; 
+import {
+  collection,
+  getDocs,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  db,
+} from "../../firebase";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 
-import AddProductModal from './AddProductModal';
-import EditProductModal from './EditProductModal';
-import ViewProductModal from './ViewProductModal';
-import DeleteConfirmationModal from './DeleteConfirmationModal';
-
+import AddProductModal from "./AddProductModal";
+import EditProductModal from "./EditProductModal";
+import ViewProductModal from "./ViewProductModal";
+import DeleteConfirmationModal from "./DeleteConfirmationModal";
 
 const ProductList = () => {
-  const [products, setProducts] = useState([]); 
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState(""); 
-  const [editProduct, setEditProduct] = useState(null);
-  const [deleteProduct, setDeleteProduct] = useState(null);
-  const [viewProduct, setViewProduct] = useState(null); 
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [currentAdminUser, setCurrentAdminUser] = useState(null); 
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [editProduct, setEditProduct] = useState(null);
+  const [deleteProduct, setDeleteProduct] = useState(null);
+  const [viewProduct, setViewProduct] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [currentAdminUser, setCurrentAdminUser] = useState(null);
 
-  useEffect(() => {
-    let unsubscribeAuth;
-    try {
-        const authInstance = getAuth();
-        unsubscribeAuth = onAuthStateChanged(authInstance, (user) => {
-            setCurrentAdminUser(user);
-        });
-    } catch (error) {
-        console.error("Error setting up Firebase Auth listener:", error);
-    }
-    
-    const fetchAllProducts = async () => {
-      try {
-        const productsCollectionRef = collection(db, "products"); 
-        const productSnapshot = await getDocs(productsCollectionRef);
+  // ✅ AUTH LISTENER
+  useEffect(() => {
+    let unsubAuth;
+    try {
+      const auth = getAuth();
+      unsubAuth = onAuthStateChanged(auth, (user) => setCurrentAdminUser(user));
+    } catch (e) {
+      console.error("Auth listener error:", e);
+    }
 
-        const productsList = productSnapshot.docs.map(doc => {
-          const data = doc.data();
-          const priceValue = parseFloat(data.price) || 0;
-          const offerPriceValue = parseFloat(data.offerPrice) || priceValue;
+    // ✅ FETCH PRODUCTS
+    const fetchAll = async () => {
+      try {
+        const snap = await getDocs(collection(db, "products"));
 
-          // --- Image Handling Logic (Keep this robust logic) ---
-          let primaryImage = data.image || "📦"; 
-          if (Array.isArray(data.imageUrl) && data.imageUrl.length > 0) {
-             primaryImage = data.imageUrl[0];
-          } 
-          if (typeof data.image === 'string' && data.image.startsWith('http')) {
-              primaryImage = data.image;
-          }
-          // --- End Image Handling Logic ---
+        const list = snap.docs.map((d) => {
+          const data = d.data();
 
-          const numericalStock = parseFloat(data.stock || data.productsCount || 0);
-          const stockStatus = numericalStock > 0 ? "In stock" : "Out of stock";
+          const priceVal = Number(data.price || 0);
+          const offerVal = Number(data.offerPrice ?? priceVal);
 
-          return {
-            id: doc.id, 
-            image: primaryImage, // The single image URL/path/emoji
-            name: data.title || "Unknown Product", 
-            price: `₹${priceValue.toFixed(2)}`,
-            quantity: data.netVolume || "N/A", 
-            sale: priceValue > 0 ? Math.round(((priceValue - offerPriceValue) / priceValue) * 100) : 0, 
-            stock: stockStatus,
-            
-            description: data.description || '', 
-            dosage: data.dosage || '',
-            manufacturedBy: data.manufacturedBy || '',
-            marketedBy: data.marketedBy || '',
-            cashOnDelivery: data.cashOnDelivery || '',
-            composition: data.composition || '', 
-            additionalInformation: data.additionalInformation || '',
-           
-            categoryId: data.categoryId || "", 
-            brandId: data.brandId || "", 
-            
-            categoryName: data.categoryName || 'N/A', 
-            brandName: data.brandName || 'N/A', 
+          const images = Array.isArray(data.imageUrl) ? data.imageUrl : [];
+          const primaryImage =
+            images[0] ||
+            (data.image?.startsWith("http") ? data.image : "📦");
 
-            offerPriceRaw: offerPriceValue,
-            stockCount: numericalStock,
-            sellerId: data.sellerId || data.sellerid || '',
-            taxAmount: data.taxAmount || 0,
-            storage: data.storage || '',
-            isBestSelling: data.isBestSelling || false,
-          };
-        });
-        
-        setProducts(productsList);
-        
-      } catch (error) {
-        console.error("Error fetching products from Firebase: ", error);
-        setProducts([]); 
-      } finally {
-        setLoading(false);
-      }
-    };
+          const stockNum = Number(data.stock ?? data.productsCount ?? 0);
 
-    fetchAllProducts();
-    
-    return () => {
-        if (unsubscribeAuth) unsubscribeAuth();
-    };
+          return {
+            id: d.id,
+            productId: data.productId || d.id,
 
-  }, []); 
-  
+            // images
+            image: primaryImage,
+            imageUrl: images,
+            videoUrl: Array.isArray(data.videoUrl) ? data.videoUrl : [],
 
-const handleAddProduct = async (newProductData) => {
-  try {
-    const rawPrice = parseFloat(
-      newProductData.price.replace("₹", "").replace(",", "") || 0
+            // info
+            name: data.title || "Unknown Product",
+            price: `₹${priceVal.toFixed(2)}`,
+            offerPriceRaw: offerVal,
+            sale:
+              priceVal > 0
+                ? Math.round(((priceVal - offerVal) / priceVal) * 100)
+                : 0,
+
+            quantity: data.netVolume || "N/A",
+
+            stockCount: stockNum,
+            stock: stockNum > 0 ? "In stock" : "Out of stock",
+
+            description: data.description || "",
+            dosage: data.dosage || "",
+            ingredients: data.ingredients || "",
+            manufacturedBy: data.manufacturedBy || "",
+            marketedBy: data.marketedBy || "",
+            cashOnDelivery: data.cashOnDelivery || "No",
+            composition: data.composition || "",
+            additionalInformation: data.additionalInformation || "",
+            shelfLife: data.shelfLife || "",
+
+            categoryId: data.categoryId || "",
+            brandId: data.brandId || "",
+            categoryName: data.categoryName || "N/A",
+            brandName: data.brandName || "N/A",
+
+            sellerId: data.sellerId || "",
+
+            taxAmount: Number(data.taxAmount || 0),
+            storage: data.storage || "",
+            isBestSelling: Boolean(data.isBestSelling),
+            rating: Number(data.rating || 0),
+          };
+        });
+
+        setProducts(list);
+      } catch (e) {
+        console.error("Fetch products error:", e);
+        setProducts([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAll();
+    return () => unsubAuth && unsubAuth();
+  }, []);
+
+  // ✅ ADD PRODUCT
+  const handleAddProduct = async (newProductData) => {
+    try {
+      const firestoreData = {
+        ...newProductData,
+        price: Number(newProductData.price),
+        offerPrice: Number(newProductData.offerPrice || 0),
+        stock: Number(newProductData.stock),
+        rating: Number(newProductData.rating || 0),
+        taxAmount: Number(newProductData.taxAmount || 0),
+        sellerId: newProductData.sellerid, // NOTE: `sellerid` from AddProductModal is used
+      };
+
+      const docRef = await addDoc(collection(db, "products"), firestoreData);
+      await updateDoc(docRef, { productId: docRef.id });
+
+      const priceVal = firestoreData.price;
+      const offerVal = firestoreData.offerPrice;
+
+      const uiProduct = {
+        id: docRef.id,
+        productId: docRef.id,
+        image: firestoreData.imageUrl?.[0] || "📦",
+        imageUrl: firestoreData.imageUrl || [],
+        videoUrl: firestoreData.videoUrl || [],
+
+        name: firestoreData.title,
+        price: `₹${priceVal.toFixed(2)}`,
+        offerPriceRaw: offerVal,
+        sale:
+          priceVal > 0
+            ? Math.round(((priceVal - offerVal) / priceVal) * 100)
+            : 0,
+
+        quantity: firestoreData.netVolume,
+        stockCount: firestoreData.stock,
+        stock: firestoreData.stock > 0 ? "In stock" : "Out of stock",
+
+        description: firestoreData.description,
+        dosage: firestoreData.dosage,
+        ingredients: firestoreData.ingredients,
+        manufacturedBy: firestoreData.manufacturedBy,
+        marketedBy: firestoreData.marketedBy,
+        cashOnDelivery: firestoreData.cashOnDelivery,
+        composition: firestoreData.composition,
+        additionalInformation: firestoreData.additionalInformation,
+        shelfLife: firestoreData.shelfLife,
+
+        categoryId: firestoreData.categoryId,
+        brandId: firestoreData.brandId,
+        categoryName: firestoreData.categoryName,
+        brandName: firestoreData.brandName,
+
+        sellerId: firestoreData.sellerId,
+        taxAmount: firestoreData.taxAmount,
+        storage: firestoreData.storage,
+        isBestSelling: firestoreData.isBestSelling,
+        rating: firestoreData.rating,
+      };
+
+      setProducts((prev) => [...prev, uiProduct]);
+      setShowAddModal(false);
+    } catch (err) {
+      console.error("Error adding product:", err);
+      alert("Failed to add product.");
+    }
+  };
+
+  // ✅ ✅ ✅ EDIT PRODUCT (FIXED)
+  const handleEditProduct = async (updatedProductData) => {
+    try {
+      const productRef = doc(db, "products", updatedProductData.id);
+
+      const firestoreData = {
+        title: updatedProductData.title,
+        description: updatedProductData.description,
+        price: Number(updatedProductData.price),
+        netVolume: updatedProductData.netVolume || "",
+        dosage: updatedProductData.dosage || "",
+        ingredients: updatedProductData.ingredients || "",
+        composition: updatedProductData.composition || "",
+        storage: updatedProductData.storage || "",
+        manufacturedBy: updatedProductData.manufacturedBy || "",
+        marketedBy: updatedProductData.marketedBy || "",
+        shelfLife: updatedProductData.shelfLife || "",
+        additionalInformation: updatedProductData.additionalInformation || "",
+
+        stock: Number(updatedProductData.stock || 0),
+        taxAmount: Number(updatedProductData.taxAmount || 0),
+        cashOnDelivery: updatedProductData.cashOnDelivery || "No",
+        offerPrice: Number(updatedProductData.offerPrice || 0),
+        isBestSelling: Boolean(updatedProductData.isBestSelling),
+        rating: Number(updatedProductData.rating || 0),
+
+        categoryId: updatedProductData.categoryId,
+        brandId: updatedProductData.brandId,
+        categoryName: updatedProductData.categoryName || "",
+        brandName: updatedProductData.brandName || "",
+
+        // FIX: The EditProductModal sends 'sellerid' (lowercase 'id').
+        // We use 'sellerid' from the update payload and provide a fallback ("")
+        // to prevent Firebase from failing on `undefined`.
+        sellerId: updatedProductData.sellerid || updatedProductData.sellerId || "", 
+
+        imageUrl: updatedProductData.imageUrl || [],
+        videoUrl: updatedProductData.videoUrl || [],
+      };
+
+      await updateDoc(productRef, firestoreData);
+
+      // ✅ Update UI immediately (FIXED)
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === updatedProductData.id
+            ? {
+                ...p,
+                name: firestoreData.title,
+                description: firestoreData.description,
+                price: `₹${firestoreData.price.toFixed(2)}`,
+                offerPriceRaw: firestoreData.offerPrice,
+                sale:
+                  firestoreData.price > 0
+                    ? Math.round(
+                        ((firestoreData.price - firestoreData.offerPrice) /
+                          firestoreData.price) *
+                          100
+                      )
+                    : 0,
+
+                quantity: firestoreData.netVolume,
+                stockCount: firestoreData.stock,
+                stock:
+                  firestoreData.stock > 0 ? "In stock" : "Out of stock",
+
+                imageUrl: firestoreData.imageUrl,
+                videoUrl: firestoreData.videoUrl,
+                image: firestoreData.imageUrl?.[0] || "📦",
+
+                categoryId: firestoreData.categoryId,
+                brandId: firestoreData.brandId,
+                categoryName: firestoreData.categoryName,
+                brandName: firestoreData.brandName,
+
+                sellerId: firestoreData.sellerId,
+                taxAmount: firestoreData.taxAmount,
+                storage: firestoreData.storage,
+                dosage: firestoreData.dosage,
+                ingredients: firestoreData.ingredients,
+                composition: firestoreData.composition,
+                manufacturedBy: firestoreData.manufacturedBy,
+                marketedBy: firestoreData.marketedBy,
+                additionalInformation:
+                  firestoreData.additionalInformation,
+                rating: firestoreData.rating,
+                isBestSelling: firestoreData.isBestSelling,
+              }
+            : p
+        )
+      );
+
+      setEditProduct(null);
+    } catch (e) {
+      console.error("Update error:", e);
+      alert("Failed to update product.");
+    }
+  };
+
+  // ✅ DELETE PRODUCT
+  const handleDelete = async (productId) => {
+    try {
+      await deleteDoc(doc(db, "products", productId));
+      setProducts((prev) => prev.filter((p) => p.id !== productId));
+      setDeleteProduct(null);
+    } catch (e) {
+      console.error("Delete error:", e);
+      alert("Failed to delete.");
+    }
+  };
+
+  // ✅ SEARCH
+  const displayedProducts = products.filter(
+    (p) =>
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // ✅ LOADING SCREEN
+  if (loading) {
+    return (
+      <div
+        style={{ minHeight: "100vh", background: "#f1f3f6" }}
+        className="d-flex justify-content-center align-items-center"
+      >
+        <h2 className="fw-bold text-primary">Loading Products...</h2>
+      </div>
     );
-
-    const imageValue = newProductData.image;
-
-    const imageUrlArray =
-      typeof imageValue === "string" && imageValue.startsWith("http")
-        ? [imageValue]
-        : [];
-
-    const firestoreData = {
-      title: newProductData.name,
-      price: rawPrice,
-      netVolume: newProductData.quantity,
-      stock: parseFloat(newProductData.stockCount || 0),
-
-      image: imageValue,
-      imageUrl: imageUrlArray,
-
-      categoryId: newProductData.categoryId,
-      brandId: newProductData.brandId,
-      categoryName: newProductData.categoryName,
-      brandName: newProductData.brandName,
-
-      description: newProductData.description || "",
-      dosage: newProductData.dosage || "",
-      manufacturedBy: newProductData.manufacturedBy || "",
-      marketedBy: newProductData.marketedBy || "",
-      cashOnDelivery: newProductData.cashOnDelivery || "N/A",
-      composition: newProductData.composition || "",
-      additionalInformation: newProductData.additionalInformation || "",
-      sellerId: newProductData.sellerId || "",
-      taxAmount: newProductData.taxAmount || 0,
-      storage: newProductData.storage || "",
-      isBestSelling: newProductData.isBestSelling || false,
-    };
-
-    // ✅ 1) Add product → Firestore auto-generates ID
-    const docRef = await addDoc(collection(db, "products"), firestoreData);
-
-    // ✅ 2) Store that ID inside the document
-    await updateDoc(docRef, {
-      productId: docRef.id,
-    });
-
-    // ✅ 3) Add to UI list
-    const addedProduct = {
-      ...firestoreData,
-      id: docRef.id,
-      productId: docRef.id, // ✅ store for UI
-      image: imageValue.startsWith("http") ? imageValue : "📦",
-      price: `₹${rawPrice.toFixed(2)}`,
-      offerPriceRaw: rawPrice,
-      sale: 0,
-      stock: firestoreData.stock > 0 ? "In stock" : "Out of stock",
-      stockCount: firestoreData.stock,
-      quantity: newProductData.quantity,
-      name: newProductData.name,
-    };
-
-    setProducts((prev) => [...prev, addedProduct]);
-    setShowAddModal(false);
-  } catch (error) {
-    console.error("Error adding product: ", error);
-    alert("Failed to add product to Firebase. Check console.");
   }
-};
 
-  const handleEditProduct = async (updatedProductData) => {
-    try {
-      const productRef = doc(db, "products", updatedProductData.id);
-      const rawOriginalPrice = parseFloat(updatedProductData.price.replace('₹', '').replace(',', '') || 0);
+  const sellerId = currentAdminUser?.uid || "";
 
-      // The imageValue is the final URL from EditProductModal
-      const imageValue = updatedProductData.image; 
-      const imageUrlArray = (typeof imageValue === 'string' && imageValue.startsWith('http')) 
-          ? [imageValue] 
-          : []; 
+  return (
+    <div style={{ minHeight: "100vh", background: "#f1f3f6" }}>
+      <FixedHeader onSearchChange={setSearchTerm} />
 
-      const firestoreData = {
-        title: updatedProductData.name,
-        price: rawOriginalPrice,
-        netVolume: updatedProductData.quantity,
-        stock: parseFloat(updatedProductData.stockCount || 0),
-        
-        image: imageValue,           
-        imageUrl: imageUrlArray,     
-        
-        categoryId: updatedProductData.categoryId,
-        brandId: updatedProductData.brandId,
-        categoryName: updatedProductData.categoryName, 
-        brandName: updatedProductData.brandName,     
-        
-        dosage: updatedProductData.dosage,
-        description: updatedProductData.description,
-        composition: updatedProductData.composition,
-        manufacturedBy: updatedProductData.manufacturedBy,
-        marketedBy: updatedProductData.marketedBy,
-        cashOnDelivery: updatedProductData.cashOnDelivery,
-        additionalInformation: updatedProductData.additionalInformation,
-        offerPrice: updatedProductData.offerPriceRaw,
-        sellerId: updatedProductData.sellerId,
-        taxAmount: parseFloat(updatedProductData.taxAmount || 0),
-        storage: updatedProductData.storage,
-        isBestSelling: updatedProductData.isBestSelling || false,
-      };
-      
-      await updateDoc(productRef, firestoreData);
-      
-      const updatedProduct = {
-          ...updatedProductData,
-          image: typeof imageValue === 'string' && imageValue.startsWith('http') ? imageValue : "📦", // Display image
-          price: `₹${rawOriginalPrice.toFixed(2)}`,
-          sale: rawOriginalPrice > 0 ? Math.round(((rawOriginalPrice - firestoreData.offerPrice) / rawOriginalPrice) * 100) : 0,
-          stock: firestoreData.stock > 0 ? "In stock" : "Out of stock", 
-          stockCount: firestoreData.stock,
-          categoryId: updatedProductData.categoryId,
-          brandId: updatedProductData.brandId,
-          categoryName: updatedProductData.categoryName,
-          brandName: updatedProductData.brandName,
-      }
-      setProducts(products.map((p) => (p.id === updatedProductData.id ? updatedProduct : p)));
-      setEditProduct(null);
-    } catch (error) {
-      console.error("Error updating document: ", error);
-      alert("Failed to update product in Firebase. Check console for details.");
-      setEditProduct(null);
-    }
-  };
+      <div className="container-fluid p-4" style={{ paddingTop: "90px" }}>
+        <h2 className="mb-4 fw-bold text-primary">Product Management</h2>
 
+        <div className="d-flex justify-content-end mb-3">
+          <button
+            className="btn bg-primary text-white shadow-sm rounded-pill px-4"
+            onClick={() => setShowAddModal(true)}
+          >
+            + Add New Product
+          </button>
+        </div>
 
-  const handleDelete = async (productId) => {
-    // ... (existing logic)
-    try {
-      await deleteDoc(doc(db, "products", productId));
-      
-      setProducts(products.filter((p) => p.id !== productId));
-      setDeleteProduct(null);
-    } catch (error) {
-      console.error("Error deleting document: ", error);
-      alert("Failed to delete product from Firebase. Check console for details.");
-      setDeleteProduct(null);
-    }
-  };
-  
-  const displayedProducts = products.filter(product => 
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+        <div className="card shadow-lg border-0 rounded-4">
+          <div className="table-responsive">
+            <table className="table align-middle mb-0 table-hover">
+              <thead className="table-light">
+                <tr>
+                  <th>Product</th>
+                  <th>ID</th>
+                  <th>Price</th>
+                  <th>Qty/Vol</th>
+                  <th>Sale</th>
+                  <th>Stock</th>
+                  <th className="text-center">Actions</th>
+                </tr>
+              </thead>
 
-  if (loading) {
-    return (
-        <div style={{ minHeight: "100vh", background: "#f1f3f6", display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <h2 className="fw-bold text-primary">Loading Products...</h2>
-        </div>
-    );
-  }
-  
-  const sellerId = currentAdminUser ? currentAdminUser.uid : '';
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#f1f3f6" }}>
-      <FixedHeader onSearchChange={setSearchTerm} />
-
-      <div className="container-fluid p-4" style={{ paddingTop: "90px" }}>
-        <h2 className="mb-4 fw-bold text-primary">Product Management</h2>
-
-        <div className="d-flex justify-content-end align-items-center mb-3 flex-wrap gap-2">
-          <button 
-            className="btn bg-primary text-white shadow-sm rounded-pill px-4" 
-            onClick={() => setShowAddModal(true)}
-          >
-            <span className="me-2">+</span> Add New Product
-          </button>
-        </div>
-
-        <div className="card shadow-lg border-0 rounded-4">
-          <div className="table-responsive">
-            <table className="table align-middle mb-0 table-hover">
-              <thead className="table-light">
-                <tr>
-                  <th>Product</th>
-                  <th>Product ID</th>
-                  <th>Price</th>
-                  <th>Quantity/Volume</th>
-                  <th>Sale (%)</th>
-                  <th>Stock</th>
-                  <th className="text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedProducts.length === 0 ? (
-                    <tr>
-                        <td colSpan="7" className="text-center text-muted p-4">
-                            {searchTerm ? `No products match "${searchTerm}".` : "No products found."}
-                        </td>
-                    </tr>
-                ) : (
-                    displayedProducts.map((product) => (
-                      <tr key={product.id} className="align-middle hover-shadow">
-                        <td>
-                          <div className="d-flex align-items-center">
-                            {/* 🎯 MODIFIED: Robust Image Rendering Logic */}
-                            {product.image && typeof product.image === 'string' && product.image.startsWith('http') ? (
-                                <img 
-                                      src={product.image} 
-                                      alt={product.name} 
-                                      style={{ width: '40px', height: '40px', objectFit: 'cover' }} 
-                                      className="me-3 p-1 bg-light rounded-circle shadow-sm" 
-                                      onError={(e) => { 
-                                          e.target.onerror = null; 
-                                          e.target.style.display = 'none'; 
-                                          // Display the fallback emoji div if image fails to load
-                                          const fallbackDiv = e.target.nextSibling;
-                                          if (fallbackDiv) fallbackDiv.style.display = 'block';
-                                      }} 
-                                  />
-                            ) : null}
-                            {/* Fallback/Emoji display */}
-                            <div 
-                                style={{ display: (product.image && typeof product.image === 'string' && product.image.startsWith('http')) ? 'none' : 'block' }} // Hide if a valid URL is present
-                                className="me-3 p-3 bg-light rounded-circle shadow-sm text-center fs-6"
-                            >
-                                {product.image || '📦'}
+              <tbody>
+                {displayedProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="text-center text-muted p-4">
+                      No products found.
+                    </td>
+                  </tr>
+                ) : (
+                  displayedProducts.map((product) => (
+                    <tr key={product.id} className="hover-shadow">
+                      <td>
+                        <div className="d-flex align-items-center">
+                          {product.image?.startsWith("http") ? (
+                            <img
+                              src={product.image}
+                              alt=""
+                              style={{
+                                width: 40,
+                                height: 40,
+                                objectFit: "cover",
+                              }}
+                              className="me-3 rounded-circle shadow-sm"
+                            />
+                          ) : (
+                            <div className="me-3 p-3 bg-light rounded-circle shadow-sm">
+                              📦
                             </div>
-                            <span className="fw-semibold">{product.name}</span>
-                          </div>
-                        </td>
-                        <td>{product.id}</td>
-                        <td className="fw-bold">{product.price}</td>
-                        <td>{product.quantity}</td>
-                        <td>
-                          <span className="badge bg-success text-white">{product.sale}%</span>
-                        </td>
-                        <td>
-                          <span className={`badge ${product.stock === "Out of stock" ? "bg-danger" : "bg-success"} fw-semibold`}>
-                            {product.stock}
-                          </span>
-                        </td>
-                        <td className="text-center">
-                          <button className="btn btn-sm btn-outline-primary me-1 shadow-sm" onClick={() => setViewProduct(product)} title="View Product">👁️</button>
-                          <button className="btn btn-sm btn-outline-info me-1 shadow-sm" onClick={() => setEditProduct(product)} title="Edit Product">✏️</button>
-                          <button className="btn btn-sm btn-outline-danger shadow-sm" onClick={() => setDeleteProduct(product)} title="Delete Product">🗑️</button>
-                        </td>
-                      </tr>
-                    ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                          )}
 
-        {showAddModal && (
-            <AddProductModal 
-                onClose={() => setShowAddModal(false)} 
-                onAdd={handleAddProduct} 
-                sellerId={sellerId} 
-            />
-        )}
-        {editProduct && <EditProductModal product={editProduct} onClose={() => setEditProduct(null)} onSave={handleEditProduct} />}
-        {viewProduct && <ViewProductModal product={viewProduct} onClose={() => setViewProduct(null)} />}
-        {deleteProduct && <DeleteConfirmationModal product={deleteProduct} onClose={() => setDeleteProduct(null)} onConfirm={() => handleDelete(deleteProduct.id)} />}
+                          <span className="fw-semibold">
+                            {product.name}
+                          </span>
+                        </div>
+                      </td>
 
-      </div>
+                      <td>{product.id}</td>
+                      <td>{product.price}</td>
+                      <td>{product.quantity}</td>
 
-      <style>{`
-        /* ... CSS Styles ... */
-        .btn-gradient-primary {
-          background: linear-gradient(135deg, #4f46e5, #6366f1);
-          color: #fff;
-        }
-        .btn-gradient-primary:hover {
-          background: linear-gradient(135deg, #6366f1, #4f46e5);
-          color: #fff;
-        }
-        .hover-shadow:hover {
-          box-shadow: 0 10px 20px rgba(0,0,0,0.12);
-          transition: all 0.3s ease-in-out;
-        }
-        .modal.show {
-          overflow-x: hidden;
-          overflow-y: auto;
-        }
-      `}</style>
-    </div>
-  );
+                      <td>
+                        <span className="badge bg-success">
+                          {product.sale}%
+                        </span>
+                      </td>
+
+                      <td>
+                        {product.stockCount > 0 ? (
+                          <span className="badge bg-success">
+                            In stock ({product.stockCount})
+                          </span>
+                        ) : (
+                          <span className="badge bg-danger">
+                            Out of stock
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="text-center">
+                        <button
+                          className="btn btn-sm btn-outline-primary me-1"
+                          onClick={() => setViewProduct(product)}
+                        >
+                          👁️
+                        </button>
+
+                        <button
+                          className="btn btn-sm btn-outline-info me-1"
+                          onClick={() => setEditProduct(product)}
+                        >
+                          ✏️
+                        </button>
+
+                        <button
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => setDeleteProduct(product)}
+                        >
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ✅ MODALS */}
+        {showAddModal && (
+          <AddProductModal
+            onClose={() => setShowAddModal(false)}
+            onAdd={handleAddProduct}
+            sellerId={sellerId}
+          />
+        )}
+
+        {editProduct && (
+          <EditProductModal
+            product={editProduct}
+            onClose={() => setEditProduct(null)}
+            onSave={handleEditProduct}
+          />
+        )}
+
+        {viewProduct && (
+          <ViewProductModal
+            product={viewProduct}
+            onClose={() => setViewProduct(null)}
+          />
+        )}
+
+        {deleteProduct && (
+          <DeleteConfirmationModal
+            product={deleteProduct}
+            onClose={() => setDeleteProduct(null)}
+            onConfirm={() => handleDelete(deleteProduct.id)}
+          />
+        )}
+      </div>
+
+      <style>{`
+        .hover-shadow:hover {
+          box-shadow: 0 10px 20px rgba(0,0,0,0.12);
+          transition: all 0.3s ease-in-out;
+        }
+        .modal.show {
+          overflow-x: hidden;
+          overflow-y: auto;
+        }
+      `}</style>
+    </div>
+  );
 };
 
 export default ProductList;

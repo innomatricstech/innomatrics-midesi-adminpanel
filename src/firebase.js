@@ -33,7 +33,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyBPDELPQLEVwU9Rji_Mxat5K47bXlXkKf8",
   authDomain: "midesi-65562.firebaseapp.com",
   projectId: "midesi-65562",
-  storageBucket: "midesi-65562.appspot.com",
+  storageBucket: "midesi-65562.firebasestorage.app",
   messagingSenderId: "1095262983676",
   appId: "1:1095262983676:web:d75c1f036a92c8add74e79",
 };

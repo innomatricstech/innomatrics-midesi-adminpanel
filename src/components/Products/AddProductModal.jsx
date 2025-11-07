@@ -1,518 +1,561 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
-// 1. Import necessary Firestore and Storage components
-import { 
-    db, 
-    collection, 
-    getDocs, 
-    storage, // 🎯 ADDED: Firebase Storage object
-} from "../../firebase"; // ⚠️ Adjust the path to your firebase config file
+import { db, collection, getDocs, storage } from "../../firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-// 🎯 ADDED: Import Storage functions
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"; 
-
-// --------------------------------------------------------
-// Custom hook to fetch categories from Firestore
-// --------------------------------------------------------
+/* ---------------------------- CATEGORY HOOK ---------------------------- */
 const useCategoryFetcher = () => {
-    const [categories, setCategories] = useState([]);
-    const [loading, setLoading] = useState(true);
-    
-    useEffect(() => {
-        const fetchCategories = async () => {
-            setLoading(true);
-            try {
-                const categoryCollectionRef = collection(db, "category");
-                const snapshot = await getDocs(categoryCollectionRef);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-                const categoryList = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    name: doc.data().categoryName || "Unnamed Category", 
-                    imageURL: doc.data().categoryImage || "", 
-                }));
-                
-                setCategories(categoryList);
-            } catch (error) {
-                console.error("Error fetching categories from Firestore:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const snap = await getDocs(collection(db, "category"));
+        setCategories(
+          snap.docs.map((d) => ({
+            id: d.id,
+            name: d.data().categoryName || "Unnamed Category",
+          }))
+        );
+      } catch (e) {
+        console.error("Category fetch error:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    run();
+  }, []);
 
-        fetchCategories();
-    }, []);
-
-    return { categories, loading };
+  return { categories, loading };
 };
 
-// --------------------------------------------------------
-// Custom hook to fetch brands from Firestore
-// --------------------------------------------------------
+/* ---------------------------- BRAND HOOK ---------------------------- */
 const useBrandFetcher = () => {
-    const [brands, setBrands] = useState([]);
-    const [loading, setLoading] = useState(true);
-    
-    useEffect(() => {
-        const fetchBrands = async () => {
-            setLoading(true);
-            try {
-                const brandCollectionRef = collection(db, "brands");
-                const snapshot = await getDocs(brandCollectionRef);
+  const [brands, setBrands] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-                const brandList = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    name: doc.data().brandName || "Unnamed Brand", 
-                    imageURL: doc.data().brandImage || "", 
-                }));
-                
-                setBrands(brandList);
-            } catch (error) {
-                console.error("Error fetching brands from Firestore:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const snap = await getDocs(collection(db, "brands"));
+        setBrands(
+          snap.docs.map((d) => ({
+            id: d.id,
+            name: d.data().brandName || "Unnamed Brand",
+          }))
+        );
+      } catch (e) {
+        console.error("Brand fetch error:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    run();
+  }, []);
 
-        fetchBrands();
-    }, []);
-
-    return { brands, loading };
+  return { brands, loading };
 };
+
+/* ---------------------------- MAIN COMPONENT ---------------------------- */
 
 const AddProductModal = ({ onClose, onAdd, sellerId }) => {
-    const { categories, loading: loadingCategories } = useCategoryFetcher();
-    const { brands, loading: loadingBrands } = useBrandFetcher(); 
+  const { categories, loading: loadingCategories } = useCategoryFetcher();
+  const { brands, loading: loadingBrands } = useBrandFetcher();
 
-    // 🎯 NEW STATE: To switch between file upload (true) and URL input (false)
-    const [useFileUploadMode, setUseFileUploadMode] = useState(true); 
+  /* ---------------------------- FORM STATE ---------------------------- */
+  const [form, setForm] = useState({
+    title: "",
+    description: "",
+    price: "",
+    offerPrice: 0,
+    netVolume: "",
+    dosage: "",
+    ingredients: "",
+    composition: "",
+    storage: "",
+    manufacturedBy: "",
+    marketedBy: "",
+    shelfLife: "",
+    additionalInformation: "",
+    stock: 0,
+    taxAmount: 0,
+    cashOnDelivery: "Yes",
+    isBestSelling: false,
+    rating: 0,
+    categoryId: "",
+    brandId: "",
+    categoryName: "",
+    brandName: "",
+    sellerid: sellerId || "",
+  });
 
-    // State for image file and upload status
-    const [imageFile, setImageFile] = useState(null);
-    const [isUploading, setIsUploading] = useState(false); 
+  const handleChange = (e) => {
+    const { name, value, checked, type } = e.target;
 
-    // State initialized with all fields 
-    const [newProduct, setNewProduct] = useState({
-        // 1. Core Fields
-        image: "", // This will hold the final uploaded URL or the manually entered URL
-        name: "",
-        price: "", 
-        quantity: "", 
-        stockCount: 0, 
-        isBestSelling: false, 
-        categoryId: "",    
-        categoryName: "",  
-        categoryImageURL: "", 
-        
-        // Brand Fields
-        brandId: "",       
-        brandName: "",  
-        brandImageURL: "", 
+    if (type === "checkbox") {
+      setForm((p) => ({ ...p, [name]: checked }));
+      return;
+    }
 
-        // 2. Pricing & Logistics
-        offerPriceRaw: 0, 
-        sellerId: sellerId || "", 
-        taxAmount: 0, 
-        storage: "",
-        cashOnDelivery: "Yes", 
-        dosage: "", 
+    if (name === "categoryId") {
+      const cat = categories.find((c) => c.id === value);
+      setForm((p) => ({
+        ...p,
+        categoryId: value,
+        categoryName: cat?.name || "",
+      }));
+      return;
+    }
 
-        // 3. Detail Descriptions
-        manufacturedBy: "",
-        marketedBy: "",
-        description: "",
-        composition: "",
-        additionalInformation: "",
-    });
+    if (name === "brandId") {
+      const b = brands.find((c) => c.id === value);
+      setForm((p) => ({
+        ...p,
+        brandId: value,
+        brandName: b?.name || "",
+      }));
+      return;
+    }
 
-    // 🎯 UseEffect to clean up local file URL (needed for preview)
-    useEffect(() => {
-        // Cleanup function for file object URLs
-        return () => {
-            if (imageFile) {
-                URL.revokeObjectURL(imageFile);
-            }
-        };
-    }, [imageFile]);
+    const numeric = ["price", "offerPrice", "stock", "taxAmount", "rating"];
+    setForm((p) => ({
+      ...p,
+      [name]: numeric.includes(name) ? Number(value) : value,
+    }));
+  };
 
+  /* ---------------------------- IMAGE/VIDEO STATE ---------------------------- */
 
-    const handleChange = (e) => {
-        const { name, value, type, checked } = e.target;
-        
-        if (type === 'checkbox') {
-            setNewProduct(prev => ({ ...prev, [name]: checked }));
-            return;
-        }
+  const [useImageUpload, setUseImageUpload] = useState(true);
+  const [useVideoUpload, setUseVideoUpload] = useState(true);
 
-        // Handle Category Selection
-        if (name === 'categoryId') {
-            const selectedCategory = categories.find(cat => cat.id === value);
-            
-            setNewProduct(prev => ({
-                ...prev,
-                categoryId: value, 
-                categoryName: selectedCategory ? selectedCategory.name : "", 
-                categoryImageURL: selectedCategory ? selectedCategory.imageURL : "", 
-            }));
-            return;
-        }
-        
-        // Handle Brand Selection
-        if (name === 'brandId') {
-            const selectedBrand = brands.find(brand => brand.id === value);
-            
-            setNewProduct(prev => ({
-                ...prev,
-                brandId: value, 
-                brandName: selectedBrand ? selectedBrand.name : "",
-                brandImageURL: selectedBrand ? selectedBrand.imageURL : "", 
-            }));
-            return;
-        }
-        
-        // Safely parse numbers for fields that require it
-        const parsedValue = (
-            name === 'offerPriceRaw' || 
-            name === 'stockCount' || 
-            name === 'taxAmount'
-        ) 
-            ? parseFloat(value || 0)
-            : value;
-        
-        // Update the main state field
-        setNewProduct(prev => ({
-            ...prev,
-            [name]: parsedValue,
-        }));
-    };
+  const [imageFiles, setImageFiles] = useState([]);
+  const [videoFiles, setVideoFiles] = useState([]);
 
-   const handleSubmit = async (e) => { 
+  const [imageUrlsText, setImageUrlsText] = useState("");
+  const [videoUrlsText, setVideoUrlsText] = useState("");
+
+  const [isUploading, setIsUploading] = useState(false);
+
+  const splitUrls = (text) =>
+    text
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter((s) => s.startsWith("http"));
+
+  const uploadFiles = async (files, folder, validate) => {
+    const out = [];
+    for (const file of files) {
+      if (!validate(file)) continue;
+
+      const path = `${folder}/${Date.now()}_${file.name}`;
+      const r = ref(storage, path);
+
+      await uploadBytes(r, file);
+      const url = await getDownloadURL(r);
+      out.push(url);
+    }
+    return out;
+  };
+
+  /* ---------------------------- FORM SUBMIT ---------------------------- */
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!newProduct.categoryId) {
-        alert("Please select a Category.");
-        return;
+
+    if (!form.categoryId) return alert("Select category.");
+    if (!form.brandId) return alert("Select brand.");
+    if (!form.title) return alert("Product title required.");
+    if (!form.description) return alert("Product description required.");
+
+    setIsUploading(true);
+
+    try {
+      const pastedImages = splitUrls(imageUrlsText);
+      const uploadedImages = useImageUpload
+        ? await uploadFiles(imageFiles, "products/images", (f) =>
+            f.type.startsWith("image/")
+          )
+        : [];
+
+      const pastedVideos = splitUrls(videoUrlsText);
+      const uploadedVideos = useVideoUpload
+        ? await uploadFiles(
+            videoFiles,
+            "products/videos",
+            (f) =>
+              f.type === "video/mp4" ||
+              f.name.toLowerCase().endsWith(".mp4")
+          )
+        : [];
+
+      const finalProduct = {
+        ...form,
+        imageUrl: [...uploadedImages, ...pastedImages],
+        videoUrl: [...uploadedVideos, ...pastedVideos],
+        price: Number(form.price),
+        offerPrice: Number(form.offerPrice),
+        stock: Number(form.stock),
+        taxAmount: Number(form.taxAmount),
+        rating: Number(form.rating),
+      };
+
+      await onAdd(finalProduct);
+    } catch (err) {
+      console.error("Add product error:", err);
+      alert("Failed to add product.");
+    } finally {
+      setIsUploading(false);
     }
-    if (!newProduct.brandId) { 
-        alert("Please select a Brand.");
-        return;
-    }
-    
-    let imageUrl = newProduct.image; 
+  };
 
-    if (useFileUploadMode) {
-        if (imageFile) {
-            try {
-                setIsUploading(true);
+  /* ---------------------------- PREVIEWS ---------------------------- */
+  const imagePreviews = [
+    ...imageFiles.map((f) => URL.createObjectURL(f)),
+    ...splitUrls(imageUrlsText),
+  ];
 
-                const imgRef = ref(storage, `products/${imageFile.name}-${Date.now()}`);
-                await uploadBytes(imgRef, imageFile);
-                imageUrl = await getDownloadURL(imgRef);
-
-            } catch (error) {
-                console.error("Error uploading product image:", error);
-                alert("Failed to upload product image. Please check console.");
-                setIsUploading(false);
-                return; 
-            }
-        } else {
-            imageUrl = ""; 
-        }
-    } else {
-        if (!newProduct.image) {
-            alert("Please provide a valid Image URL or switch to File Upload mode.");
-            return;
-        }
-        imageUrl = newProduct.image;
-    }
-    
-    setIsUploading(false);
-
-    // ✅ Add productId field (Firestore will fill this later)
-    const finalProductData = {
-        ...newProduct,
-        image: imageUrl,
-        productId: "",   
-    };
-
-    onAdd(finalProductData);
-};
-
-    // Determine which URL to use for the live preview
-    const previewSource = useFileUploadMode && imageFile 
-        ? URL.createObjectURL(imageFile) // Local URL for selected file
-        : newProduct.image; // URL from text input or previously uploaded
-
-    return (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-            <div className="modal-dialog modal-xl"> 
-                <div className="modal-content shadow-lg rounded-4">
-                    <form onSubmit={handleSubmit}>
-                        <div className="modal-header bg-primary text-white">
-                            <h5 className="modal-title">Add New Product</h5>
-                            <button type="button" className="btn-close btn-close-white" onClick={onClose}></button>
-                        </div>
-                        <div className="modal-body">
-                            
-                            {/* --- Core Information & Pricing --- */}
-                            <h6 className="text-primary mb-3">Core Information & Pricing</h6>
-                            <div className="row">
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Product Name</label>
-                                    <input type="text" className="form-control" name="name" value={newProduct.name} onChange={handleChange} required />
-                                </div>
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Price (₹ - Original)</label>
-                                    <input type="text" className="form-control" name="price" value={newProduct.price} onChange={handleChange} required />
-                                </div>
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Offer Price (Raw ₹)</label>
-                                    <input type="number" step="0.01" className="form-control" name="offerPriceRaw" value={newProduct.offerPriceRaw} onChange={handleChange} required />
-                                </div>
-
-                                {/* CATEGORY DROPDOWN */}
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Select Category</label> 
-                                    <select 
-                                        className="form-select" 
-                                        name="categoryId" 
-                                        value={newProduct.categoryId} 
-                                        onChange={handleChange} 
-                                        required
-                                        disabled={loadingCategories}
-                                    >
-                                        <option value="" disabled>
-                                            {loadingCategories ? "Loading Categories..." : "--- Select Category ---"}
-                                        </option>
-                                        {categories.map((cat) => (
-                                            <option key={cat.id} value={cat.id}>
-                                                {cat.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <small className="text-muted d-block mt-1">
-                                        Selected Category: <span className='fw-bold text-dark me-2'>{newProduct.categoryName || 'N/A'}</span>
-                                    </small>
-                                </div>
-                                
-                                {/* BRAND DROPDOWN */}
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Select Brand</label> 
-                                    <select 
-                                        className="form-select" 
-                                        name="brandId" 
-                                        value={newProduct.brandId} 
-                                        onChange={handleChange} 
-                                        required
-                                        disabled={loadingBrands}
-                                    >
-                                        <option value="" disabled>
-                                            {loadingBrands ? "Loading Brands..." : "--- Select Brand ---"}
-                                        </option>
-                                        {brands.map((brand) => (
-                                            <option key={brand.id} value={brand.id}>
-                                                {brand.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <small className="text-muted d-block mt-1">
-                                        Selected Brand: <span className='fw-bold text-dark me-2'>{newProduct.brandName || 'N/A'}</span>
-                                    </small>
-                                </div>
-
-                                {/* 🎯 MODIFIED: Image Input Section with Toggle and Preview */}
-                                <div className="col-md-4 mb-3">
-                                    {/* Toggle Switch */}
-                                    <div className="d-flex justify-content-between align-items-center mb-1">
-                                        <label className="form-label">Product Image Source</label> 
-                                        <div className="form-check form-switch">
-                                            <input 
-                                                className="form-check-input" 
-                                                type="checkbox" 
-                                                id="imageModeSwitch" 
-                                                checked={useFileUploadMode}
-                                                onChange={() => {
-                                                    setUseFileUploadMode(prev => !prev);
-                                                    setImageFile(null); // Clear file when switching mode
-                                                    setNewProduct(prev => ({...prev, image: ""})); // Clear URL when switching mode
-                                                }}
-                                            />
-                                            <label className="form-check-label small" htmlFor="imageModeSwitch">
-                                                {useFileUploadMode ? "File Upload" : "Image URL"}
-                                            </label>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Conditional Input Field */}
-                                    {useFileUploadMode ? (
-                                        // --- File Upload Input ---
-                                        <div className="border p-2 rounded">
-                                            <input 
-                                                type="file" 
-                                                accept="image/*"
-                                                className="form-control" 
-                                                onChange={(e) => setImageFile(e.target.files[0])} 
-                                                required={!newProduct.image} // Require file if no URL is present
-                                            />
-                                            {imageFile ? (
-                                                <small className="text-success mt-1 d-block">
-                                                    File ready: <span className='fw-bold'>{imageFile.name}</span>
-                                                </small>
-                                            ) : (
-                                                <small className="text-muted mt-1 d-block">Select a file to upload.</small>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        // --- URL Text Input ---
-                                        <div className="border p-2 rounded">
-                                            <input 
-                                                type="url" 
-                                                className="form-control" 
-                                                placeholder="Paste Image URL (e.g., https://...)"
-                                                name="image" 
-                                                value={newProduct.image} 
-                                                onChange={handleChange} 
-                                                required={!imageFile} // Require URL if no file is selected
-                                            />
-                                            <small className="text-muted mt-1 d-block">Manually paste the image link here.</small>
-                                        </div>
-                                    )}
-
-                                    {/* 🎯 NEW: Image Preview Section */}
-                                    {previewSource && (
-                                        <div className="mt-3 border p-2 rounded text-center bg-light">
-                                            <label className="form-label small text-primary fw-bold">Image Preview</label>
-                                            <img 
-                                                src={previewSource} 
-                                                alt="Product Preview" 
-                                                className="img-fluid rounded" 
-                                                style={{ maxHeight: '120px', objectFit: 'contain' }} 
-                                                onError={(e) => { 
-                                                    e.target.style.display = 'none'; 
-                                                    e.target.previousSibling.innerHTML = 'Image Preview (Failed to load)'; 
-                                                }}
-                                                onLoad={(e) => { 
-                                                    e.target.style.display = 'block'; 
-                                                    e.target.previousSibling.innerHTML = 'Image Preview'; 
-                                                }}
-                                            />
-                                        </div>
-                                    )}
-
-                                </div>
-                                {/* END Image Input Section */}
-
-
-                                {/* ... (The rest of the form fields remain the same) ... */}
-
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Quantity/Volume</label>
-                                    <input type="text" className="form-control" name="quantity" value={newProduct.quantity} onChange={handleChange} required />
-                                </div>
-                                
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Stock Count (Numerical/Raw)</label>
-                                    <input 
-                                        type="number" 
-                                        className="form-control" 
-                                        name="stockCount" 
-                                        value={newProduct.stockCount} 
-                                        onChange={handleChange} 
-                                    />
-                                </div>
-
-                                {/* Is Best Selling Checkbox */}
-                                <div className="col-md-4 mb-3">
-                                    <div className="form-check form-switch mt-4">
-                                        <input 
-                                            className="form-check-input" 
-                                            type="checkbox" 
-                                            role="switch"
-                                            id="isBestSellingSwitch" 
-                                            name="isBestSelling" 
-                                            checked={newProduct.isBestSelling}
-                                            onChange={handleChange} 
-                                        />
-                                        <label className="form-check-label" htmlFor="isBestSellingSwitch">Mark as Best Selling</label>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <h6 className="mt-2 text-primary">Logistics & Tax Information</h6>
-                            <hr className="my-2"/>
-                            
-                            <div className="row">
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Seller/Admin ID</label>
-                                    <input 
-                                        type="text" 
-                                        className="form-control" 
-                                        name="sellerId" 
-                                        value={newProduct.sellerId} 
-                                        onChange={handleChange} 
-                                        disabled 
-                                    />
-                                </div>
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Tax Amount (%)</label>
-                                    <input type="number" step="0.01" className="form-control" name="taxAmount" value={newProduct.taxAmount} onChange={handleChange} />
-                                </div>
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Storage Conditions</label>
-                                    <input type="text" className="form-control" name="storage" value={newProduct.storage} onChange={handleChange} />
-                                </div>
-                                <div className="col-md-6 mb-3">
-                                    <label className="form-label">COD Available (Text)</label>
-                                    <input type="text" className="form-control" name="cashOnDelivery" value={newProduct.cashOnDelivery} onChange={handleChange} />
-                                </div>
-                                <div className="col-md-6 mb-3">
-                                    <label className="form-label">Dosage/How To Use</label>
-                                    <input type="text" className="form-control" name="dosage" value={newProduct.dosage} onChange={handleChange} />
-                                </div>
-                            </div>
-
-                            <h6 className="mt-2 text-primary">Detail Descriptions</h6>
-                            <hr className="my-2"/>
-
-                            <div className="row">
-                                <div className="col-md-6 mb-3">
-                                    <label className="form-label">Manufactured By</label>
-                                    <input type="text" className="form-control" name="manufacturedBy" value={newProduct.manufacturedBy} onChange={handleChange} />
-                                </div>
-                                <div className="col-md-6 mb-3">
-                                    <label className="form-label">Marketed By</label>
-                                    <input type="text" className="form-control" name="marketedBy" value={newProduct.marketedBy} onChange={handleChange} />
-                                </div>
-                            </div>
-                            
-                            <div className="mb-3">
-                                <label className="form-label">Description</label>
-                                <textarea className="form-control" rows="3" name="description" value={newProduct.description} onChange={handleChange}></textarea>
-                            </div>
-                            <div className="mb-3">
-                                <label className="form-label">Composition Snippet</label>
-                                <textarea className="form-control" rows="3" name="composition" value={newProduct.composition} onChange={handleChange}></textarea>
-                            </div>
-                            <div className="mb-3">
-                                <label className="form-label">Additional Information (Enter each step/point on a new line)</label>
-                                <textarea className="form-control" rows="4" name="additionalInformation" value={newProduct.additionalInformation} onChange={handleChange}></textarea>
-                            </div>
-
-                        </div>
-                        <div className="modal-footer">
-                            <button type="button" className="btn btn-secondary rounded-pill" onClick={onClose}>Cancel</button>
-                            <button 
-                                type="submit" 
-                                className="btn btn-primary rounded-pill"
-                                disabled={isUploading} 
-                            >
-                                {isUploading ? "Uploading..." : "Add Product"} 
-                            </button>
-                        </div>
-                    </form>
-                </div>
+  return (
+    <div className="modal show d-block" style={{ background: "rgba(0,0,0,0.5)" }}>
+      <div className="modal-dialog modal-xl">
+        <div className="modal-content rounded-4 shadow-lg">
+          <form onSubmit={handleSubmit}>
+            {/* HEADER */}
+            <div className="modal-header bg-primary text-white">
+              <h5 className="modal-title">Add Product</h5>
+              <button className="btn-close btn-close-white" onClick={onClose}></button>
             </div>
+
+            {/* BODY */}
+            <div className="modal-body">
+              <h6 className="text-primary fw-bold">Basic Details</h6>
+              <div className="row g-3">
+                <div className="col-md-6">
+                  <label className="form-label">Title</label>
+                  <input
+                    className="form-control"
+                    name="title"
+                    value={form.title}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+
+                <div className="col-md-3">
+                  <label className="form-label">Price (₹)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    name="price"
+                    value={form.price}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="col-md-3">
+                  <label className="form-label">Offer Price (₹)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    name="offerPrice"
+                    value={form.offerPrice}
+                    onChange={handleChange}
+                  />
+                </div>
+                
+                {/* START: Seller ID Added */}
+                <div className="col-md-6">
+                  <label className="form-label">Seller ID</label>
+                  <input
+                    className="form-control"
+                    name="sellerid"
+                    value={form.sellerid}
+                    readOnly
+                    disabled
+                  />
+                </div>
+                {/* END: Seller ID Added */}
+
+
+                <div className="col-md-12">
+                  <label className="form-label">Description</label>
+                  <textarea
+                    rows="3"
+                    className="form-control"
+                    name="description"
+                    value={form.description}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+
+              {/* CATEGORY / BRAND */}
+              <h6 className="text-primary mt-4 fw-bold">Category & Brand</h6>
+              <div className="row g-3">
+                <div className="col-md-6">
+                  <label className="form-label">Category</label>
+                  <select
+                    className="form-select"
+                    name="categoryId"
+                    value={form.categoryId}
+                    onChange={handleChange}
+                  >
+                    <option value="">-- Select Category --</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-md-6">
+                  <label className="form-label">Brand</label>
+                  <select
+                    className="form-select"
+                    name="brandId"
+                    value={form.brandId}
+                    onChange={handleChange}
+                  >
+                    <option value="">-- Select Brand --</option>
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* INVENTORY */}
+              <h6 className="text-primary mt-4 fw-bold">Inventory</h6>
+              <div className="row g-3">
+                <div className="col-md-4">
+                  <label className="form-label">Net Volume</label>
+                  <input
+                    className="form-control"
+                    name="netVolume"
+                    value={form.netVolume}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Stock</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    name="stock"
+                    value={form.stock}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Tax (%)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    name="taxAmount"
+                    value={form.taxAmount}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+
+              {/* DETAILS */}
+              <h6 className="text-primary mt-4 fw-bold">Details</h6>
+              <div className="row g-3">
+                <div className="col-md-4">
+                  <label className="form-label">Dosage</label>
+                  <input
+                    className="form-control"
+                    name="dosage"
+                    value={form.dosage}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Ingredients</label>
+                  <input
+                    className="form-control"
+                    name="ingredients"
+                    value={form.ingredients}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Composition</label>
+                  <input
+                    className="form-control"
+                    name="composition"
+                    value={form.composition}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Storage</label>
+                  <input
+                    className="form-control"
+                    name="storage"
+                    value={form.storage}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Manufactured By</label>
+                  <input
+                    className="form-control"
+                    name="manufacturedBy"
+                    value={form.manufacturedBy}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Marketed By</label>
+                  <input
+                    className="form-control"
+                    name="marketedBy"
+                    value={form.marketedBy}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Shelf Life</label>
+                  <input
+                    className="form-control"
+                    name="shelfLife"
+                    value={form.shelfLife}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="col-md-8">
+                  <label className="form-label">
+                    Additional Info (Supports Q: A:)
+                  </label>
+                  <textarea
+                    rows="3"
+                    className="form-control"
+                    name="additionalInformation"
+                    value={form.additionalInformation}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+
+              {/* IMAGES */}
+              <h6 className="text-primary mt-4 fw-bold">Images</h6>
+              <div className="row g-3">
+                <div className="col-md-6">
+                  <div className="d-flex justify-content-between">
+                    <label className="form-label">Upload Images</label>
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      checked={useImageUpload}
+                      onChange={() => setUseImageUpload((p) => !p)}
+                    />
+                  </div>
+                  <input
+                    type="file"
+                    className="form-control"
+                    disabled={!useImageUpload}
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => setImageFiles([...e.target.files])}
+                  />
+                </div>
+
+                <div className="col-md-6">
+                  <label className="form-label">Paste Image URLs</label>
+                  <textarea
+                    rows="3"
+                    className="form-control"
+                    value={imageUrlsText}
+                    onChange={(e) => setImageUrlsText(e.target.value)}
+                  />
+                </div>
+
+                {imagePreviews.length > 0 && (
+                  <div className="col-md-12 mt-2 d-flex flex-wrap gap-2">
+                    {imagePreviews.map((src, i) => (
+                      <img
+                        key={i}
+                        src={src}
+                        alt=""
+                        style={{
+                          width: 80,
+                          height: 80,
+                          objectFit: "cover",
+                        }}
+                        className="rounded border"
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* VIDEOS */}
+              <h6 className="text-primary mt-4 fw-bold">Videos (MP4)</h6>
+              <div className="row g-3">
+                <div className="col-md-6">
+                  <div className="d-flex justify-content-between">
+                    <label className="form-label">Upload Videos</label>
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      checked={useVideoUpload}
+                      onChange={() => setUseVideoUpload((p) => !p)}
+                    />
+                  </div>
+                  <input
+                    type="file"
+                    className="form-control"
+                    disabled={!useVideoUpload}
+                    accept="video/mp4"
+                    multiple
+                    onChange={(e) => setVideoFiles([...e.target.files])}
+                  />
+                </div>
+
+                <div className="col-md-6">
+                  <label className="form-label">Paste Video URLs</label>
+                  <textarea
+                    rows="3"
+                    className="form-control"
+                    value={videoUrlsText}
+                    onChange={(e) => setVideoUrlsText(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* FOOTER */}
+            <div className="modal-footer">
+              <button className="btn btn-secondary rounded-pill" onClick={onClose}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary rounded-pill"
+                disabled={isUploading}
+              >
+                {isUploading ? "Uploading..." : "Add Product"}
+              </button>
+            </div>
+          </form>
         </div>
-    );
+      </div>
+    </div>
+  );
 };
 
 export default AddProductModal;

@@ -10,22 +10,34 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
+  // 💡 Firebase Storage Imports (required for image upload/delete)
+  storage, 
+  ref, 
+  uploadBytes, 
+  getDownloadURL,
+  deleteObject, 
 } from "../firebase";
 
 const RechargeProviders = () => {
   const [providers, setProviders] = useState([]);
   const [filteredProviders, setFilteredProviders] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Set to true initially while fetching
 
+  // State for Add Modal
   const [newProvider, setNewProvider] = useState({
     providerName: "",
-    image: "",
+    imageFile: null, // For file input
   });
+  
+  // States for Modals
   const [editProvider, setEditProvider] = useState(null);
+  const [editImageFile, setEditImageFile] = useState(null); // File during edit
   const [deleteProvider, setDeleteProvider] = useState(null);
   const [viewProvider, setViewProvider] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // --- Core Data Logic (Fetch, Search, CRUD Handlers) ---
 
   // 🔹 Fetch Providers (Realtime)
   useEffect(() => {
@@ -62,26 +74,49 @@ const RechargeProviders = () => {
     );
     setFilteredProviders(filtered);
   }, [searchTerm, providers]);
+  
+  // 💡 HELPER: Uploads file to Storage and returns the URL
+  const uploadImageAndGetURL = async (file, providerName) => {
+    if (!file) return null;
+    const storageRef = ref(
+      storage,
+      // Use a unique path
+      `rechargeProviders/${providerName}_${Date.now()}_${file.name}`
+    );
+    await uploadBytes(storageRef, file);
+    const downloadURL = await getDownloadURL(storageRef);
+    return downloadURL;
+  };
 
   // ➕ Add Provider
   const handleAddSubmit = async (e) => {
     e.preventDefault();
-    if (!newProvider.providerName || !newProvider.image) {
-      alert("Please fill in all fields.");
+    if (!newProvider.providerName || !newProvider.imageFile) {
+      alert("Please fill in the provider name and upload an image file.");
       return;
     }
     try {
       setLoading(true);
-      const ref = await addDoc(collection(db, "rechargeProvider"), {
+
+      // 1. Upload the image
+      const imageUrl = await uploadImageAndGetURL(
+        newProvider.imageFile,
+        newProvider.providerName
+      );
+
+      // 2. Add the document (Firestore)
+      const docRef = await addDoc(collection(db, "rechargeProvider"), {
         providerName: newProvider.providerName,
-        image: newProvider.image,
+        image: imageUrl, // Store the Storage URL
         createdAt: serverTimestamp(),
       });
-      await updateDoc(ref, { id: ref.id });
+      // 3. Update the document with its own ID (for easy reference/search)
+      await updateDoc(docRef, { id: docRef.id });
+
       setShowAddModal(false);
-      setNewProvider({ providerName: "", image: "" });
+      setNewProvider({ providerName: "", imageFile: null }); // Reset state
     } catch (err) {
-      console.error("Error adding:", err);
+      console.error("Error adding provider:", err);
       alert("Failed to add provider.");
     } finally {
       setLoading(false);
@@ -94,13 +129,28 @@ const RechargeProviders = () => {
     if (!editProvider) return;
     try {
       setLoading(true);
-      const ref = doc(db, "rechargeProvider", editProvider.docId);
-      await updateDoc(ref, {
+      const refToUpdate = doc(db, "rechargeProvider", editProvider.docId);
+      
+      let imageUrl = editProvider.image; // Assume existing image URL
+
+      // 1. If a NEW file is selected, upload it and update the URL
+      if (editImageFile) {
+        // Optional: delete old image first (more complex, skipped for brevity)
+        imageUrl = await uploadImageAndGetURL(
+          editImageFile,
+          editProvider.providerName
+        );
+      }
+      
+      // 2. Update the document in Firestore
+      await updateDoc(refToUpdate, {
         providerName: editProvider.providerName,
-        image: editProvider.image,
+        image: imageUrl, // New or existing URL
         updatedAt: serverTimestamp(),
       });
-      setEditProvider(null);
+      
+      setEditProvider(null); // Close the modal
+      setEditImageFile(null); // Clear the file state
     } catch (err) {
       console.error("Error updating:", err);
       alert("Failed to update provider.");
@@ -114,6 +164,18 @@ const RechargeProviders = () => {
     if (!deleteProvider) return;
     try {
       setLoading(true);
+      
+      // 1. Optional: Delete the image from Firebase Storage
+      if (deleteProvider.image) {
+        try {
+          const imageRef = ref(storage, deleteProvider.image);
+          await deleteObject(imageRef);
+        } catch (storageError) {
+          console.warn("Could not delete image from storage. Continuing with Firestore delete.", storageError);
+        }
+      }
+
+      // 2. Delete the Firestore document
       await deleteDoc(doc(db, "rechargeProvider", deleteProvider.docId));
       setDeleteProvider(null);
     } catch (err) {
@@ -124,6 +186,8 @@ const RechargeProviders = () => {
     }
   };
 
+  // --- Render Component ---
+  
   return (
     <div style={{ minHeight: "100vh", background: "#f1f3f6" }}>
       <FixedHeader onSearchChange={setSearchTerm} />
@@ -133,14 +197,17 @@ const RechargeProviders = () => {
           <h2 className="fw-bold text-primary">Recharge Providers</h2>
           <button
             className="btn btn-gradient-primary shadow-sm rounded-pill px-4"
-            onClick={() => setShowAddModal(true)}
+            onClick={() => {
+                setShowAddModal(true);
+                setNewProvider({ providerName: "", imageFile: null }); // Reset form state
+            }}
             disabled={loading}
           >
             ➕ Add Provider
           </button>
         </div>
 
-        {/* Table */}
+        {/* --- Data Table --- */}
         <div className="card shadow-lg border-0 rounded-4">
           <div className="table-responsive">
             <table className="table align-middle mb-0 table-hover">
@@ -153,7 +220,14 @@ const RechargeProviders = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredProviders.length > 0 ? (
+                {loading ? (
+                    <tr>
+                        <td colSpan="4" className="text-center py-5 text-primary">
+                            <div className="spinner-border spinner-border-sm me-2" role="status"></div>
+                            Loading providers...
+                        </td>
+                    </tr>
+                ) : filteredProviders.length > 0 ? (
                   filteredProviders.map((p) => (
                     <tr key={p.docId} className="hover-shadow">
                       <td>
@@ -179,7 +253,10 @@ const RechargeProviders = () => {
                         </button>
                         <button
                           className="btn btn-sm btn-outline-warning me-1"
-                          onClick={() => setEditProvider(p)}
+                          onClick={() => {
+                            setEditProvider(p);
+                            setEditImageFile(null); // Ensure no file is pre-selected
+                          }}
                         >
                           ✏️
                         </button>
@@ -204,6 +281,8 @@ const RechargeProviders = () => {
           </div>
         </div>
 
+        {/* --- Modals Section --- */}
+
         {/* ✨ Add Provider Modal */}
         {showAddModal && (
           <div className="modal show d-block" tabIndex="-1">
@@ -211,10 +290,7 @@ const RechargeProviders = () => {
               <div className="modal-content shadow-lg border-0 rounded-4">
                 <div
                   className="modal-header text-white rounded-top-4"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, #4f46e5, #6366f1)",
-                  }}
+                  style={{ background: "linear-gradient(135deg, #4f46e5, #6366f1)" }}
                 >
                   <h5 className="modal-title">➕ Add Provider</h5>
                   <button
@@ -232,22 +308,19 @@ const RechargeProviders = () => {
                         className="form-control"
                         value={newProvider.providerName}
                         onChange={(e) =>
-                          setNewProvider({
-                            ...newProvider,
-                            providerName: e.target.value,
-                          })
+                          setNewProvider({ ...newProvider, providerName: e.target.value })
                         }
                         required
                       />
                     </div>
                     <div className="mb-3">
-                      <label className="form-label fw-semibold">Image URL</label>
+                      <label className="form-label fw-semibold">Image File Upload</label>
                       <input
-                        type="url"
+                        type="file"
                         className="form-control"
-                        value={newProvider.image}
+                        accept="image/*"
                         onChange={(e) =>
-                          setNewProvider({ ...newProvider, image: e.target.value })
+                          setNewProvider({ ...newProvider, imageFile: e.target.files[0] })
                         }
                         required
                       />
@@ -261,8 +334,8 @@ const RechargeProviders = () => {
                     >
                       Cancel
                     </button>
-                    <button type="submit" className="btn btn-primary">
-                      Add Provider
+                    <button type="submit" className="btn btn-primary" disabled={loading}>
+                      {loading ? "Adding..." : "Add Provider"}
                     </button>
                   </div>
                 </form>
@@ -278,10 +351,7 @@ const RechargeProviders = () => {
               <div className="modal-content shadow-lg border-0 rounded-4">
                 <div
                   className="modal-header text-white rounded-top-4"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, #4f46e5, #6366f1)",
-                  }}
+                  style={{ background: "linear-gradient(135deg, #4f46e5, #6366f1)" }}
                 >
                   <h5 className="modal-title">✏️ Edit Provider</h5>
                   <button
@@ -308,28 +378,25 @@ const RechargeProviders = () => {
                         className="form-control"
                         value={editProvider.providerName}
                         onChange={(e) =>
-                          setEditProvider({
-                            ...editProvider,
-                            providerName: e.target.value,
-                          })
+                          setEditProvider({ ...editProvider, providerName: e.target.value })
                         }
                         required
                       />
                     </div>
                     <div className="mb-3">
-                      <label className="form-label fw-semibold">Image URL</label>
+                      <label className="form-label fw-semibold">Replace Image (Optional)</label>
                       <input
-                        type="url"
+                        type="file"
                         className="form-control"
-                        value={editProvider.image}
-                        onChange={(e) =>
-                          setEditProvider({
-                            ...editProvider,
-                            image: e.target.value,
-                          })
-                        }
-                        required
+                        accept="image/*"
+                        onChange={(e) => setEditImageFile(e.target.files[0])}
                       />
+                      <small className="form-text text-muted">
+                        Current Image:{" "}
+                        <a href={editProvider.image} target="_blank" rel="noopener noreferrer">
+                          View
+                        </a>
+                      </small>
                     </div>
                   </div>
                   <div className="modal-footer">
@@ -340,8 +407,8 @@ const RechargeProviders = () => {
                     >
                       Cancel
                     </button>
-                    <button type="submit" className="btn btn-primary">
-                      Save Changes
+                    <button type="submit" className="btn btn-primary" disabled={loading}>
+                      {loading ? "Saving..." : "Save Changes"}
                     </button>
                   </div>
                 </form>
@@ -357,10 +424,7 @@ const RechargeProviders = () => {
               <div className="modal-content shadow-lg border-0 rounded-4">
                 <div
                   className="modal-header text-white rounded-top-4"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, #4f46e5, #6366f1)",
-                  }}
+                  style={{ background: "linear-gradient(135deg, #4f46e5, #6366f1)" }}
                 >
                   <h5 className="modal-title">📱 Provider Details</h5>
                   <button
@@ -376,16 +440,14 @@ const RechargeProviders = () => {
                     className="rounded-3 shadow-sm mb-3"
                     style={{ height: "90px", width: "90px", objectFit: "contain" }}
                   />
-                  <h5 className="fw-bold text-primary">
-                    {viewProvider.providerName}
-                  </h5>
+                  <h5 className="fw-bold text-primary">{viewProvider.providerName}</h5>
                   <p className="text-muted mb-2">ID: {viewProvider.docId}</p>
                   <a
                     href={viewProvider.image}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    View Image
+                    View Image URL
                   </a>
                 </div>
                 <div className="modal-footer">
@@ -418,6 +480,7 @@ const RechargeProviders = () => {
                 <div className="modal-body">
                   Are you sure you want to delete{" "}
                   <strong>{deleteProvider.providerName}</strong>?
+                  <p className="text-danger mt-2">This action is irreversible and will also attempt to delete the associated image from storage.</p>
                 </div>
                 <div className="modal-footer">
                   <button
@@ -431,8 +494,9 @@ const RechargeProviders = () => {
                     type="button"
                     className="btn btn-danger"
                     onClick={handleDelete}
+                    disabled={loading}
                   >
-                    Delete
+                    {loading ? "Deleting..." : "Delete"}
                   </button>
                 </div>
               </div>

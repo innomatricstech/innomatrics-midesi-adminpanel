@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import FixedHeader from "./FixedHeader";
 import "bootstrap/dist/css/bootstrap.min.css";
 import imageCompression from "browser-image-compression";
+
+// ✅ Import initialized instances from your firebase.js
+import { db, storage } from "../firebase";
+// ✅ Import SDK functions directly from Firebase packages
 import {
-  db,
-  storage,
   collection,
   addDoc,
   getDocs,
@@ -12,46 +14,42 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
-} from "../firebase";
+} from "firebase/firestore";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
 const CategoryList = () => {
   const [categories, setCategories] = useState([]);
-  // 🔹 NEW: State for search term
   const [searchTerm, setSearchTerm] = useState("");
-  // 🔹 NEW: State for filtered list
   const [filteredCategories, setFilteredCategories] = useState([]);
 
   const [editCategory, setEditCategory] = useState(null);
   const [deleteCategory, setDeleteCategory] = useState(null);
   const [viewCategory, setViewCategory] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
   const [newCategory, setNewCategory] = useState({
     categoryName: "",
-    categoryImage: "",
-    backGroundImage: "",
-    categoryImageFile: null,
-    backGroundImageFile: null,
+    categoryImage: "", // optional URL
+    backGroundImage: "", // optional URL
+    categoryImageFile: null, // file for add mode
+    backGroundImageFile: null, // file for add mode
   });
 
   const categoriesCollectionRef = collection(db, "category");
 
-  // ✅ Fetch all categories
+  // ✅ Initial fetch
   const fetchCategories = async () => {
     try {
       const snapshot = await getDocs(categoriesCollectionRef);
-      const categoryList = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        docId: doc.id,
-      }));
-      setCategories(categoryList);
-      setFilteredCategories(categoryList); // Initialize the filtered list
-    } catch (error) {
-      console.error("❌ Error fetching categories:", error);
+      const list = snapshot.docs.map((d) => ({ ...d.data(), docId: d.id }));
+      setCategories(list);
+      setFilteredCategories(list);
+    } catch (err) {
+      console.error("❌ Error fetching categories:", err);
     } finally {
       setLoading(false);
     }
@@ -59,111 +57,107 @@ const CategoryList = () => {
 
   useEffect(() => {
     fetchCategories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  
-  // 🔹 NEW: Search filter effect
+
+  // 🔍 Search
   useEffect(() => {
-    if (!searchTerm.trim()) {
-      setFilteredCategories(categories);
-    } else {
-      const lowercasedTerm = searchTerm.toLowerCase();
-      const filtered = categories.filter(
-        (cat) =>
-          (cat.categoryName && cat.categoryName.toLowerCase().includes(lowercasedTerm)) ||
-          (cat.docId && cat.docId.toLowerCase().includes(lowercasedTerm))
-      );
-      setFilteredCategories(filtered);
-    }
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return setFilteredCategories(categories);
+    setFilteredCategories(
+      categories.filter(
+        (c) =>
+          (c.categoryName && c.categoryName.toLowerCase().includes(term)) ||
+          (c.docId && c.docId.toLowerCase().includes(term))
+      )
+    );
   }, [searchTerm, categories]);
 
-
-  // ✅ Optimized Image Upload (with compression + progress)
+  // 📤 Upload helper with compression + progress callback
   const uploadImage = async (file, onProgress) => {
     if (!file) return null;
-    setUploading(true);
+    const compressed = await imageCompression(file, {
+      maxSizeMB: 0.6,
+      maxWidthOrHeight: 1200,
+      useWebWorker: true,
+    });
 
-    try {
-      console.log("📤 Uploading:", file.name);
-      const compressedFile = await imageCompression(file, {
-        maxSizeMB: 0.6,
-        maxWidthOrHeight: 1200,
-        useWebWorker: true,
-      });
+    const fileRef = ref(storage, `categories/${Date.now()}_${compressed.name}`);
+    const task = uploadBytesResumable(fileRef, compressed);
 
-      const fileRef = ref(storage, `categories/${Date.now()}_${compressedFile.name}`);
-      const uploadTask = uploadBytesResumable(fileRef, compressedFile);
-
-      return new Promise((resolve, reject) => {
-        uploadTask.on(
-          "state_changed",
-          (snapshot) => {
-            const progressPercent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            console.log(`Progress: ${progressPercent.toFixed(0)}%`);
-            if (onProgress) onProgress(Math.round(progressPercent));
-          },
-          (error) => {
-            console.error("❌ Upload error:", error);
-            setUploading(false);
-            reject(error);
-          },
-          async () => {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            console.log("✅ Uploaded successfully! URL:", downloadURL);
-            resolve(downloadURL);
-            setUploading(false);
-            setProgress(0);
-          }
-        );
-      });
-    } catch (error) {
-      console.error("❌ Upload failed:", error);
-      setUploading(false);
-      return null;
-    }
+    return new Promise((resolve, reject) => {
+      task.on(
+        "state_changed",
+        (snap) => {
+          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+          onProgress?.(pct);
+        },
+        (err) => {
+          console.error("❌ Upload error:", err);
+          reject(err);
+        },
+        async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          resolve(url);
+        }
+      );
+    });
   };
 
-
-  // ✅ Add Category
+  // ➕ Add
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     if (!newCategory.categoryName.trim()) return alert("Category name required");
 
     try {
       setUploading(true);
-      let catImageURL = newCategory.categoryImage;
-      let bgImageURL = newCategory.backGroundImage;
+      setProgress(1);
 
-      if (newCategory.categoryImageFile)
-        catImageURL = await uploadImage(newCategory.categoryImageFile, setProgress);
-      if (newCategory.backGroundImageFile)
-        bgImageURL = await uploadImage(newCategory.backGroundImageFile, setProgress);
+      let catURL = newCategory.categoryImage || "";
+      let bgURL = newCategory.backGroundImage || "";
+      const imageProgress = {};
+      const uploads = [];
+
+      const updateOverall = (key, pct) => {
+        imageProgress[key] = pct;
+        const filesCount = (newCategory.categoryImageFile ? 1 : 0) + (newCategory.backGroundImageFile ? 1 : 0);
+        if (!filesCount) return setProgress(100);
+        const total = Object.values(imageProgress).reduce((a, b) => a + b, 0);
+        setProgress(Math.round(total / filesCount));
+      };
+
+      if (newCategory.categoryImageFile) {
+        uploads.push(
+          uploadImage(newCategory.categoryImageFile, (p) => updateOverall("cat", p)).then((u) => (catURL = u))
+        );
+      }
+      if (newCategory.backGroundImageFile) {
+        uploads.push(
+          uploadImage(newCategory.backGroundImageFile, (p) => updateOverall("bg", p)).then((u) => (bgURL = u))
+        );
+      }
+
+      if (uploads.length) await Promise.all(uploads);
+      setProgress(100);
 
       const docRef = await addDoc(categoriesCollectionRef, {
-        categoryName: newCategory.categoryName,
-        categoryImage: catImageURL,
-        backGroundImage: bgImageURL,
+        categoryName: newCategory.categoryName.trim(),
+        categoryImage: catURL,
+        backGroundImage: bgURL,
         createdAt: serverTimestamp(),
       });
 
-      // The added category might not have 'docId' (which is the Firestore ID) 
-      // immediately after the local state update. A re-fetch is safer, 
-      // but a manual update works for display purposes.
-      const newCat = {
-        ...newCategory,
-        categoryImage: catImageURL,
-        backGroundImage: bgImageURL,
-        docId: docRef.id,
-      };
-
+      // optional: store self id
       await updateDoc(docRef, { categoryId: docRef.id });
 
-      // Update both lists to maintain search state integrity
-      setCategories((prev) => [...prev, newCat]);
-      if (!searchTerm) { // Only update filtered list if no search is active
-         setFilteredCategories((prev) => [...prev, newCat]);
-      } else {
-         // Re-run search logic by simply updating categories state, which triggers the useEffect
-      }
+      const created = {
+        categoryName: newCategory.categoryName.trim(),
+        categoryImage: catURL,
+        backGroundImage: bgURL,
+        docId: docRef.id,
+      };
+      setCategories((prev) => [...prev, created]);
+      setFilteredCategories((prev) => [...prev, created]);
 
       setShowAddModal(false);
       setNewCategory({
@@ -173,75 +167,93 @@ const CategoryList = () => {
         categoryImageFile: null,
         backGroundImageFile: null,
       });
-    } catch (error) {
-      console.error("❌ Error adding category:", error);
+      alert("Category added successfully!");
+    } catch (err) {
+      console.error("❌ Error adding category:", err);
+      alert(err?.message || "Failed to add category. See console for details.");
     } finally {
       setUploading(false);
       setProgress(0);
     }
   };
 
-  // ✅ Edit Category
+  // ✏️ Edit
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     if (!editCategory) return;
 
     try {
       setUploading(true);
+      setProgress(1);
+
       const docRef = doc(db, "category", editCategory.docId);
-      let catImageURL = editCategory.categoryImage;
-      let bgImageURL = editCategory.backGroundImage;
+      let catURL = editCategory.categoryImage || "";
+      let bgURL = editCategory.backGroundImage || "";
 
-      if (editCategory.newCategoryImageFile)
-        catImageURL = await uploadImage(editCategory.newCategoryImageFile, setProgress);
-      if (editCategory.newBackgroundFile)
-        bgImageURL = await uploadImage(editCategory.newBackgroundFile, setProgress);
-
-      const updatedData = {
-        categoryName: editCategory.categoryName,
-        categoryImage: catImageURL,
-        backGroundImage: bgImageURL,
-        updatedAt: serverTimestamp(),
+      const imageProgress = {};
+      const uploads = [];
+      const updateOverall = (key, pct) => {
+        imageProgress[key] = pct;
+        const filesCount = (editCategory.newCategoryImageFile ? 1 : 0) + (editCategory.newBackgroundFile ? 1 : 0);
+        if (!filesCount) return setProgress(100);
+        const total = Object.values(imageProgress).reduce((a, b) => a + b, 0);
+        setProgress(Math.round(total / filesCount));
       };
 
-      await updateDoc(docRef, updatedData);
+      if (editCategory.newCategoryImageFile) {
+        uploads.push(
+          uploadImage(editCategory.newCategoryImageFile, (p) => updateOverall("cat", p)).then((u) => (catURL = u))
+        );
+      }
+      if (editCategory.newBackgroundFile) {
+        uploads.push(
+          uploadImage(editCategory.newBackgroundFile, (p) => updateOverall("bg", p)).then((u) => (bgURL = u))
+        );
+      }
 
-      // Manually update the categories array for immediate feedback
-      setCategories((prev) =>
-        prev.map((c) =>
-          c.docId === editCategory.docId
-            ? { ...c, ...updatedData, docId: editCategory.docId }
-            : c
-        )
-      );
+      if (uploads.length) await Promise.all(uploads);
+      setProgress(100);
+
+      const data = {
+        categoryName: (editCategory.categoryName || "").trim(),
+        categoryImage: catURL,
+        backGroundImage: bgURL,
+        updatedAt: serverTimestamp(),
+      };
+      await updateDoc(docRef, data);
+
+      setCategories((prev) => prev.map((c) => (c.docId === editCategory.docId ? { ...c, ...data } : c)));
+      setFilteredCategories((prev) => prev.map((c) => (c.docId === editCategory.docId ? { ...c, ...data } : c)));
+
       setEditCategory(null);
-    } catch (error) {
-      console.error("❌ Error updating category:", error);
+      alert("Category updated successfully!");
+    } catch (err) {
+      console.error("❌ Error updating category:", err);
+      alert(err?.message || "Failed to update category. See console for details.");
     } finally {
       setUploading(false);
       setProgress(0);
     }
   };
 
-  // ✅ Delete Category
+  // 🗑️ Delete
   const handleDelete = async () => {
     try {
-      const docRef = doc(db, "category", deleteCategory.docId);
-      await deleteDoc(docRef);
-      // Update both lists
+      const dRef = doc(db, "category", deleteCategory.docId);
+      await deleteDoc(dRef);
       setCategories((prev) => prev.filter((c) => c.docId !== deleteCategory.docId));
       setFilteredCategories((prev) => prev.filter((c) => c.docId !== deleteCategory.docId));
       setDeleteCategory(null);
-    } catch (error) {
-      console.error("❌ Error deleting category:", error);
+    } catch (err) {
+      console.error("❌ Error deleting category:", err);
+      alert(err?.message || "Delete failed. See console for details.");
     }
   };
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
-      {/* 🔹 UPDATED: Pass setSearchTerm to FixedHeader */}
-      <FixedHeader onSearchChange={setSearchTerm} /> 
-      
+      <FixedHeader onSearchChange={setSearchTerm} />
+
       <div className="container-fluid p-4" style={{ paddingTop: "90px" }}>
         <div className="d-flex justify-content-between align-items-center mb-4">
           <h2 className="fw-bold text-primary">Category Management</h2>
@@ -268,34 +280,35 @@ const CategoryList = () => {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="5" className="text-center p-4">
-                      Loading...
-                    </td>
+                    <td colSpan="5" className="text-center p-4">Loading...</td>
                   </tr>
-                ) : filteredCategories.length > 0 ? (
-                  // 🔹 UPDATED: Use filteredCategories for rendering
+                ) : filteredCategories.length ? (
                   filteredCategories.map((cat) => (
                     <tr key={cat.docId}>
-                      <td className="text-muted small">{cat.docId.substring(0, 8)}...</td>
+                      <td className="text-muted small">{cat.docId?.substring(0, 8)}...</td>
                       <td className="fw-bold">{cat.categoryName}</td>
                       <td>
-                        {cat.categoryImage && (
+                        {cat.categoryImage ? (
                           <img
                             src={cat.categoryImage}
                             alt="Category"
                             className="rounded shadow-sm"
-                            style={{ width: "60px", height: "60px", objectFit: "cover" }}
+                            style={{ width: 60, height: 60, objectFit: "cover" }}
                           />
+                        ) : (
+                          <span className="text-muted small">—</span>
                         )}
                       </td>
                       <td>
-                        {cat.backGroundImage && (
+                        {cat.backGroundImage ? (
                           <img
                             src={cat.backGroundImage}
                             alt="Background"
                             className="rounded shadow-sm"
-                            style={{ width: "60px", height: "60px", objectFit: "cover" }}
+                            style={{ width: 60, height: 60, objectFit: "cover" }}
                           />
+                        ) : (
+                          <span className="text-muted small">—</span>
                         )}
                       </td>
                       <td className="text-center">
@@ -307,7 +320,13 @@ const CategoryList = () => {
                         </button>
                         <button
                           className="btn btn-sm btn-outline-info me-1"
-                          onClick={() => setEditCategory(cat)}
+                          onClick={() =>
+                            setEditCategory({
+                              ...cat,
+                              newCategoryImageFile: null,
+                              newBackgroundFile: null,
+                            })
+                          }
                         >
                           ✏️
                         </button>
@@ -333,26 +352,36 @@ const CategoryList = () => {
         </div>
       </div>
 
-      {/* ✅ Progress Bar (Unchanged) */}
+      {/* 🔄 Progress Bar */}
       {uploading && progress > 0 && progress < 100 && (
         <div className="fixed-bottom mb-3 w-50 mx-auto bg-light p-2 rounded shadow text-center">
-          <div className="progress" style={{ height: "8px" }}>
+          <div className="progress" style={{ height: 8 }}>
             <div
               className="progress-bar progress-bar-striped progress-bar-animated bg-success"
               style={{ width: `${progress}%` }}
-            ></div>
+            />
           </div>
           <small>{progress}% Uploading...</small>
         </div>
       )}
 
-      {/* ✅ Add Modal (Unchanged) */}
+      {/* ➕ Add Modal */}
       {showAddModal && (
         <ModalWrapper title="Add New Category" onClose={() => setShowAddModal(false)}>
           <form onSubmit={handleAddSubmit}>
-            <CategoryForm category={newCategory} setCategory={setNewCategory} uploading={uploading} />
+            <CategoryForm
+              category={newCategory}
+              setCategory={setNewCategory}
+              uploading={uploading}
+              isAddMode
+            />
             <div className="text-end mt-3">
-              <button className="btn btn-secondary me-2" onClick={() => setShowAddModal(false)}>
+              <button
+                type="button"
+                className="btn btn-secondary me-2"
+                onClick={() => setShowAddModal(false)}
+                disabled={uploading}
+              >
                 Cancel
               </button>
               <button className="btn btn-primary" type="submit" disabled={uploading}>
@@ -363,13 +392,23 @@ const CategoryList = () => {
         </ModalWrapper>
       )}
 
-      {/* ✅ Edit Modal (Unchanged) */}
+      {/* ✏️ Edit Modal */}
       {editCategory && (
         <ModalWrapper title="Edit Category" onClose={() => setEditCategory(null)}>
           <form onSubmit={handleEditSubmit}>
-            <CategoryForm category={editCategory} setCategory={setEditCategory} uploading={uploading} />
+            <CategoryForm
+              category={editCategory}
+              setCategory={setEditCategory}
+              uploading={uploading}
+              isAddMode={false}
+            />
             <div className="text-end mt-3">
-              <button className="btn btn-secondary me-2" onClick={() => setEditCategory(null)}>
+              <button
+                type="button"
+                className="btn btn-secondary me-2"
+                onClick={() => setEditCategory(null)}
+                disabled={uploading}
+              >
                 Cancel
               </button>
               <button className="btn btn-success" type="submit" disabled={uploading}>
@@ -380,7 +419,7 @@ const CategoryList = () => {
         </ModalWrapper>
       )}
 
-      {/* ✅ View Modal (Unchanged) */}
+      {/* 👁️ View Modal */}
       {viewCategory && (
         <ModalWrapper title="Category Details" onClose={() => setViewCategory(null)}>
           <div className="text-center">
@@ -395,7 +434,7 @@ const CategoryList = () => {
                   src={viewCategory.categoryImage}
                   alt="Category"
                   className="rounded shadow-sm"
-                  style={{ maxHeight: "150px", cursor: "pointer" }}
+                  style={{ maxHeight: 150, cursor: "pointer" }}
                   onClick={() => window.open(viewCategory.categoryImage, "_blank")}
                 />
               )}
@@ -404,7 +443,7 @@ const CategoryList = () => {
                   src={viewCategory.backGroundImage}
                   alt="Background"
                   className="rounded shadow-sm"
-                  style={{ maxHeight: "150px", cursor: "pointer" }}
+                  style={{ maxHeight: 150, cursor: "pointer" }}
                   onClick={() => window.open(viewCategory.backGroundImage, "_blank")}
                 />
               )}
@@ -413,7 +452,7 @@ const CategoryList = () => {
         </ModalWrapper>
       )}
 
-      {/* ✅ Delete Modal (Unchanged) */}
+      {/* 🗑️ Delete Modal */}
       {deleteCategory && (
         <ModalWrapper title="Confirm Delete" onClose={() => setDeleteCategory(null)}>
           <div className="text-center">
@@ -431,19 +470,14 @@ const CategoryList = () => {
       )}
 
       <style>{`
-        .btn-gradient-primary {
-          background: linear-gradient(135deg, #4f46e5, #6366f1);
-          color: white;
-        }
-        .btn-gradient-primary:hover {
-          background: linear-gradient(135deg, #6366f1, #4f46e5);
-        }
+        .btn-gradient-primary { background: linear-gradient(135deg, #4f46e5, #6366f1); color: #fff; }
+        .btn-gradient-primary:hover { background: linear-gradient(135deg, #6366f1, #4f46e5); }
       `}</style>
     </div>
   );
 };
 
-// ✅ Modal Wrapper (Unchanged)
+// 🧩 Modal Wrapper
 const ModalWrapper = ({ title, onClose, children }) => (
   <div className="modal show d-block" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
     <div className="modal-dialog modal-dialog-centered">
@@ -458,32 +492,35 @@ const ModalWrapper = ({ title, onClose, children }) => (
   </div>
 );
 
-// ✅ Category Form (Unchanged)
-const CategoryForm = ({ category, setCategory, uploading }) => (
+// 🧩 Category Form
+const CategoryForm = ({ category, setCategory, uploading, isAddMode }) => (
   <>
     <div className="mb-3">
       <label className="form-label">Category Name</label>
       <input
         type="text"
         className="form-control"
-        value={category.categoryName}
+        value={category.categoryName || ""}
         onChange={(e) => setCategory({ ...category, categoryName: e.target.value })}
         required
       />
     </div>
+
+    {/* Category Image */}
     <div className="mb-3">
-      <label className="form-label">Category Image</label>
+      <label className="form-label">
+        Category Image {category.categoryImage ? "(Current Image Set)" : ""}
+      </label>
       <input
         type="file"
         className="form-control mb-2"
         accept="image/*"
-        onChange={(e) =>
-          setCategory({
-            ...category,
-            categoryImageFile: e.target.files[0],
-            newCategoryImageFile: e.target.files[0],
-          })
-        }
+        onChange={(e) => {
+          const file = e.target.files?.[0] || null;
+          const fileKey = isAddMode ? "categoryImageFile" : "newCategoryImageFile";
+          setCategory({ ...category, [fileKey]: file });
+        }}
+        disabled={uploading}
       />
       <input
         type="url"
@@ -491,21 +528,25 @@ const CategoryForm = ({ category, setCategory, uploading }) => (
         className="form-control"
         value={category.categoryImage || ""}
         onChange={(e) => setCategory({ ...category, categoryImage: e.target.value })}
+        disabled={!!category.newCategoryImageFile || uploading}
       />
     </div>
+
+    {/* Background Image */}
     <div className="mb-3">
-      <label className="form-label">Background Image</label>
+      <label className="form-label">
+        Background Image {category.backGroundImage ? "(Current Image Set)" : ""}
+      </label>
       <input
         type="file"
         className="form-control mb-2"
         accept="image/*"
-        onChange={(e) =>
-          setCategory({
-            ...category,
-            backGroundImageFile: e.target.files[0],
-            newBackgroundFile: e.target.files[0],
-          })
-        }
+        onChange={(e) => {
+          const file = e.target.files?.[0] || null;
+          const fileKey = isAddMode ? "backGroundImageFile" : "newBackgroundFile";
+          setCategory({ ...category, [fileKey]: file });
+        }}
+        disabled={uploading}
       />
       <input
         type="url"
@@ -513,8 +554,10 @@ const CategoryForm = ({ category, setCategory, uploading }) => (
         className="form-control"
         value={category.backGroundImage || ""}
         onChange={(e) => setCategory({ ...category, backGroundImage: e.target.value })}
+        disabled={!!category.newBackgroundFile || uploading}
       />
     </div>
+
     {uploading && <div className="text-info small">Uploading...</div>}
   </>
 );

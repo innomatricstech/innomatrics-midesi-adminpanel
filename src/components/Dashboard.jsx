@@ -1,4 +1,4 @@
-import "../styles/Dashboard.css"
+
 import FixedHeader from "./FixedHeader";
 import "../styles/Dashboard.css"
 

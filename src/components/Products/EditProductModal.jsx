@@ -1,500 +1,492 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState, useRef } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
+import { db, collection, getDocs, storage } from "../../firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-import { 
-    db, 
-    collection, 
-    getDocs, 
-    storage, // 🎯 NEEDED: Firebase Storage object
-} from "../../firebase"; 
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"; 
-
-// --------------------------------------------------------
-// Custom hook to fetch categories from Firestore (Reused from AddProductModal)
-// --------------------------------------------------------
+// ---------------------- FETCH CATEGORY -------------------------
 const useCategoryFetcher = () => {
-    const [categories, setCategories] = useState([]);
-    const [loading, setLoading] = useState(true);
-    
-    useEffect(() => {
-        const fetchCategories = async () => {
-            setLoading(true);
-            try {
-                const categoryCollectionRef = collection(db, "category");
-                const snapshot = await getDocs(categoryCollectionRef);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-                const categoryList = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    name: doc.data().categoryName || "Unnamed Category", 
-                    imageURL: doc.data().categoryImage || "", 
-                }));
-                
-                setCategories(categoryList);
-            } catch (error) {
-                console.error("Error fetching categories from Firestore:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const snap = await getDocs(collection(db, "category"));
+        setCategories(
+          snap.docs.map((d) => ({
+            id: d.id,
+            name: d.data().categoryName || "Unnamed Category",
+          }))
+        );
+      } catch (err) {
+        console.error("Category fetch error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    run();
+  }, []);
 
-        fetchCategories();
-    }, []);
-
-    return { categories, loading };
+  return { categories, loading };
 };
 
-// --------------------------------------------------------
-// Custom hook to fetch brands from Firestore (Reused from AddProductModal)
-// --------------------------------------------------------
+// ------------------------ FETCH BRANDS -------------------------
 const useBrandFetcher = () => {
-    const [brands, setBrands] = useState([]);
-    const [loading, setLoading] = useState(true);
-    
-    useEffect(() => {
-        const fetchBrands = async () => {
-            setLoading(true);
-            try {
-                const brandCollectionRef = collection(db, "brands");
-                const snapshot = await getDocs(brandCollectionRef);
+  const [brands, setBrands] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-                const brandList = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    name: doc.data().brandName || "Unnamed Brand", 
-                    imageURL: doc.data().brandImage || "", 
-                }));
-                
-                setBrands(brandList);
-            } catch (error) {
-                console.error("Error fetching brands from Firestore:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const snap = await getDocs(collection(db, "brands"));
+        setBrands(
+          snap.docs.map((d) => ({
+            id: d.id,
+            name: d.data().brandName || "Unnamed Brand",
+          }))
+        );
+      } catch (err) {
+        console.error("Brand fetch error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    run();
+  }, []);
 
-        fetchBrands();
-    }, []);
-
-    return { brands, loading };
+  return { brands, loading };
 };
 
+// ---------------------- MAIN EDIT MODAL ------------------------
 const EditProductModal = ({ product, onClose, onSave }) => {
-    const { categories, loading: loadingCategories } = useCategoryFetcher();
-    const { brands, loading: loadingBrands } = useBrandFetcher(); 
+  const { categories, loading: loadingCategories } = useCategoryFetcher();
+  const { brands, loading: loadingBrands } = useBrandFetcher();
 
-    // 🎯 INITIAL STATE: Use existing product data
-    const [editedProduct, setEditedProduct] = useState({
-        id: product.id,
-        image: product.image && product.image.startsWith('http') ? product.image : "", // Use existing URL or start empty
-        name: product.name || "",
-        price: product.price ? product.price.replace('₹', '') : "", // Remove currency symbol for editing
-        quantity: product.quantity || "", 
-        stockCount: product.stockCount || 0, 
-        isBestSelling: product.isBestSelling || false, 
-        categoryId: product.categoryId || "",    
-        categoryName: product.categoryName || "",  
-        categoryImageURL: product.categoryImageURL || "", 
-        brandId: product.brandId || "",       
-        brandName: product.brandName || "",  
-        brandImageURL: product.brandImageURL || "", 
-        offerPriceRaw: product.offerPriceRaw || 0, 
-        sellerId: product.sellerId || "", 
-        taxAmount: product.taxAmount || 0, 
-        storage: product.storage || "",
-        cashOnDelivery: product.cashOnDelivery || "Yes", 
-        dosage: product.dosage || "", 
-        manufacturedBy: product.manufacturedBy || "",
-        marketedBy: product.marketedBy || "",
-        description: product.description || "",
-        composition: product.composition || "",
-        additionalInformation: product.additionalInformation || "",
-    });
+  const isMounted = useRef(true);
 
-    // 🎯 DUAL MODE STATE: Check if existing image is a URL, if so, start in URL mode (false)
-    const [useFileUploadMode, setUseFileUploadMode] = useState(!editedProduct.image); 
-
-    const [imageFile, setImageFile] = useState(null);
-    const [isUploading, setIsUploading] = useState(false); 
-
-    // UseEffect to clean up local file URL (needed for preview)
-    useEffect(() => {
-        // Cleanup function for file object URLs
-        return () => {
-            if (imageFile) {
-                URL.revokeObjectURL(imageFile);
-            }
-        };
-    }, [imageFile]);
-
-
-    const handleChange = (e) => {
-        const { name, value, type, checked } = e.target;
-        
-        if (type === 'checkbox') {
-            setEditedProduct(prev => ({ ...prev, [name]: checked }));
-            return;
-        }
-
-        // Handle Category Selection (name="categoryId")
-        if (name === 'categoryId') {
-            const selectedCategory = categories.find(cat => cat.id === value);
-            
-            setEditedProduct(prev => ({
-                ...prev,
-                categoryId: value, 
-                categoryName: selectedCategory ? selectedCategory.name : "", 
-                categoryImageURL: selectedCategory ? selectedCategory.imageURL : "", 
-            }));
-            return;
-        }
-        
-        // Handle Brand Selection (name="brandId")
-        if (name === 'brandId') {
-            const selectedBrand = brands.find(brand => brand.id === value);
-            
-            setEditedProduct(prev => ({
-                ...prev,
-                brandId: value, 
-                brandName: selectedBrand ? selectedBrand.name : "",
-                brandImageURL: selectedBrand ? selectedBrand.imageURL : "", 
-            }));
-            return;
-        }
-        
-        // Safely parse numbers for fields that require it
-        const parsedValue = (
-            name === 'offerPriceRaw' || 
-            name === 'stockCount' || 
-            name === 'taxAmount'
-        ) 
-            ? parseFloat(value || 0)
-            : value;
-        
-        // Update the main state field
-        setEditedProduct(prev => ({
-            ...prev,
-            [name]: parsedValue,
-        }));
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
     };
+  }, []);
 
-    const handleSave = async (e) => { 
-        e.preventDefault();
-        
-        if (!editedProduct.categoryId) {
-            alert("Please select a Category.");
-            return;
-        }
-        
-        let imageUrl = editedProduct.image; 
+  // ✅ Convert ProductList price → number
+  const extractPrice = (price) => {
+    if (!price) return 0;
+    if (typeof price === "number") return price;
+    return Number(price.toString().replace(/₹|,/g, "")) || 0;
+  };
 
-        // 🎯 MODIFIED LOGIC: Handle File Upload OR URL Input
-        if (useFileUploadMode && imageFile) {
-            // --- File Upload Logic: New file selected ---
-            try {
-                setIsUploading(true);
-                const imgRef = ref(storage, `products/${imageFile.name}-${Date.now()}`);
-                await uploadBytes(imgRef, imageFile);
-                imageUrl = await getDownloadURL(imgRef); // Get the public URL
+  // ✅ FORM INITIAL VALUES
+  const [form, setForm] = useState({
+    id: product.id,
 
-            } catch (error) {
-                console.error("Error uploading product image:", error);
-                alert("Failed to upload product image. Please check console.");
-                setIsUploading(false);
-                return; 
-            }
-        } else if (useFileUploadMode && !imageFile && !editedProduct.image) {
-            // File upload mode selected, but no file chosen and no existing image.
-            imageUrl = "";
-        } else if (!useFileUploadMode && !editedProduct.image) {
-             // URL mode selected and URL input is empty.
-             alert("Please provide a valid Image URL or select a file.");
-             return;
-        }
-        
-        // At this point, imageUrl is: 
-        // 1. New URL from upload.
-        // 2. Updated URL from text input.
-        // 3. Original URL (if no upload was done and no manual URL change was made).
-        
-        setIsUploading(false); // Reset uploading status
-        
-        const finalProductData = {
-            ...editedProduct,
-            image: imageUrl, // Final URL (from upload, text input, or original)
-        };
+    title: product.name || "",
+    description: product.description || "",
 
-        onSave(finalProductData); 
-    };
+    price: extractPrice(product.price),
+    offerPrice: Number(product.offerPriceRaw || product.offerPrice || 0),
 
-    // Determine which URL to use for the live preview
-    const previewSource = useFileUploadMode && imageFile 
-        ? URL.createObjectURL(imageFile) 
-        : editedProduct.image; 
+    // START: Added/Updated fields from AddProductModal.jsx
+    netVolume: product.netVolume || product.quantity || "", // netVolume is preferred
+    dosage: product.dosage || "",
+    ingredients: product.ingredients || "",
+    composition: product.composition || "",
+    storage: product.storage || "",
+    manufacturedBy: product.manufacturedBy || "",
+    marketedBy: product.marketedBy || "",
+    shelfLife: product.shelfLife || "",
+    additionalInformation: product.additionalInformation || "",
+    // END: Added/Updated fields
 
-    return (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-            <div className="modal-dialog modal-xl"> 
-                <div className="modal-content shadow-lg rounded-4">
-                    <form onSubmit={handleSave}>
-                        <div className="modal-header bg-info text-white">
-                            <h5 className="modal-title">Edit Product: {editedProduct.name}</h5>
-                            <button type="button" className="btn-close btn-close-white" onClick={onClose}></button>
-                        </div>
-                        <div className="modal-body">
-                            
-                            {/* --- Core Information & Pricing --- */}
-                            <h6 className="text-info mb-3">Core Information & Pricing</h6>
-                            <div className="row">
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Product Name</label>
-                                    <input type="text" className="form-control" name="name" value={editedProduct.name} onChange={handleChange} required />
-                                </div>
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Price (Raw)</label>
-                                    <input type="text" className="form-control" name="price" value={editedProduct.price} onChange={handleChange} required />
-                                </div>
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Offer Price (Raw ₹)</label>
-                                    <input type="number" step="0.01" className="form-control" name="offerPriceRaw" value={editedProduct.offerPriceRaw} onChange={handleChange} required />
-                                </div>
+    stock: Number(product.stockCount ?? 0),
+    taxAmount: Number(product.taxAmount || 0),
+    cashOnDelivery: product.cashOnDelivery || "Yes", // Default to 'Yes'
+    isBestSelling: Boolean(product.isBestSelling),
+    rating: Number(product.rating || 0), // Rating field added
 
-                                {/* CATEGORY DROPDOWN */}
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Select Category</label> 
-                                    <select 
-                                        className="form-select" 
-                                        name="categoryId" 
-                                        value={editedProduct.categoryId} 
-                                        onChange={handleChange} 
-                                        required
-                                        disabled={loadingCategories}
-                                    >
-                                        <option value="" disabled>
-                                            {loadingCategories ? "Loading Categories..." : "--- Select Category ---"}
-                                        </option>
-                                        {categories.map((cat) => (
-                                            <option key={cat.id} value={cat.id}>
-                                                {cat.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                
-                                {/* BRAND DROPDOWN */}
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Select Brand</label> 
-                                    <select 
-                                        className="form-select" 
-                                        name="brandId" 
-                                        value={editedProduct.brandId} 
-                                        onChange={handleChange} 
-                                        required
-                                        disabled={loadingBrands}
-                                    >
-                                        <option value="" disabled>
-                                            {loadingBrands ? "Loading Brands..." : "--- Select Brand ---"}
-                                        </option>
-                                        {brands.map((brand) => (
-                                            <option key={brand.id} value={brand.id}>
-                                                {brand.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
+    categoryId: product.categoryId || "",
+    brandId: product.brandId || "",
+    categoryName: product.categoryName || "",
+    brandName: product.brandName || "",
 
-                                {/* 🎯 MODIFIED: Image Input Section with Toggle and Preview */}
-                                <div className="col-md-4 mb-3">
-                                    {/* Toggle Switch */}
-                                    <div className="d-flex justify-content-between align-items-center mb-1">
-                                        <label className="form-label">Product Image Source</label> 
-                                        <div className="form-check form-switch">
-                                            <input 
-                                                className="form-check-input" 
-                                                type="checkbox" 
-                                                id="imageModeSwitch" 
-                                                checked={useFileUploadMode}
-                                                onChange={() => {
-                                                    setUseFileUploadMode(prev => !prev);
-                                                    setImageFile(null); // Clear file when switching mode
-                                                    // Note: We keep the existing URL in state until explicitly changed or overridden by upload
-                                                }}
-                                            />
-                                            <label className="form-check-label small" htmlFor="imageModeSwitch">
-                                                {useFileUploadMode ? "File Upload" : "Image URL"}
-                                            </label>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Conditional Input Field */}
-                                    {useFileUploadMode ? (
-                                        // --- File Upload Input ---
-                                        <div className="border p-2 rounded">
-                                            <input 
-                                                type="file" 
-                                                accept="image/*"
-                                                className="form-control" 
-                                                onChange={(e) => {
-                                                    setImageFile(e.target.files[0]);
-                                                    // When a file is selected, clear the manual URL to ensure upload is prioritized
-                                                    setEditedProduct(prev => ({...prev, image: ""})); 
-                                                }} 
-                                            />
-                                            {(imageFile || editedProduct.image) ? (
-                                                <small className="text-success mt-1 d-block">
-                                                    {imageFile ? `New file ready: ${imageFile.name}` : `Current URL is stored.`}
-                                                </small>
-                                            ) : (
-                                                <small className="text-muted mt-1 d-block">Select a file to upload or enter a URL.</small>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        // --- URL Text Input ---
-                                        <div className="border p-2 rounded">
-                                            <input 
-                                                type="url" 
-                                                className="form-control" 
-                                                placeholder="Paste Image URL (e.g., https://...)"
-                                                name="image" 
-                                                value={editedProduct.image} 
-                                                onChange={handleChange} 
-                                            />
-                                            <small className="text-muted mt-1 d-block">Manually paste the image link here.</small>
-                                        </div>
-                                    )}
+    sellerid: product.sellerId || "", // Storing as 'sellerid' to match firestore field
+    
+    imageUrl: Array.isArray(product.imageUrl) ? product.imageUrl : [],
+    videoUrl: Array.isArray(product.videoUrl) ? product.videoUrl : [],
+  });
 
-                                    {/* 🎯 NEW: Image Preview Section */}
-                                    {previewSource && (
-                                        <div className="mt-3 border p-2 rounded text-center bg-light">
-                                            <label className="form-label small text-info fw-bold">Image Preview</label>
-                                            <img 
-                                                src={previewSource} 
-                                                alt="Product Preview" 
-                                                className="img-fluid rounded" 
-                                                style={{ maxHeight: '120px', objectFit: 'contain' }} 
-                                                onError={(e) => { 
-                                                    e.target.style.display = 'none'; 
-                                                    e.target.previousSibling.innerHTML = 'Image Preview (Failed to load)'; 
-                                                }}
-                                                onLoad={(e) => { 
-                                                    e.target.style.display = 'block'; 
-                                                    e.target.previousSibling.innerHTML = 'Image Preview'; 
-                                                }}
-                                            />
-                                        </div>
-                                    )}
+  // ✅ FILE STATES
+  const [imageFiles, setImageFiles] = useState([]);
+  const [imageUrlsText, setImageUrlsText] = useState("");
+  const [videoFiles, setVideoFiles] = useState([]);
+  const [videoUrlsText, setVideoUrlsText] = useState("");
 
-                                </div>
-                                {/* END Image Input Section */}
-                                
-                                {/* Remaining fields */}
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Quantity/Volume</label>
-                                    <input type="text" className="form-control" name="quantity" value={editedProduct.quantity} onChange={handleChange} required />
-                                </div>
-                                
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Stock Count (Numerical/Raw)</label>
-                                    <input 
-                                        type="number" 
-                                        className="form-control" 
-                                        name="stockCount" 
-                                        value={editedProduct.stockCount} 
-                                        onChange={handleChange} 
-                                    />
-                                </div>
+  const [isUploading, setIsUploading] = useState(false);
 
-                                {/* Is Best Selling Checkbox */}
-                                <div className="col-md-4 mb-3">
-                                    <div className="form-check form-switch mt-4">
-                                        <input 
-                                            className="form-check-input" 
-                                            type="checkbox" 
-                                            role="switch"
-                                            id="isBestSellingSwitch" 
-                                            name="isBestSelling" 
-                                            checked={editedProduct.isBestSelling}
-                                            onChange={handleChange} 
-                                        />
-                                        <label className="form-check-label" htmlFor="isBestSellingSwitch">Mark as Best Selling</label>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <h6 className="mt-2 text-info">Logistics & Tax Information</h6>
-                            <hr className="my-2"/>
-                            
-                            <div className="row">
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Seller/Admin ID</label>
-                                    <input 
-                                        type="text" 
-                                        className="form-control" 
-                                        name="sellerId" 
-                                        value={editedProduct.sellerId} 
-                                        onChange={handleChange} 
-                                        disabled 
-                                    />
-                                </div>
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Tax Amount (%)</label>
-                                    <input type="number" step="0.01" className="form-control" name="taxAmount" value={editedProduct.taxAmount} onChange={handleChange} />
-                                </div>
-                                <div className="col-md-4 mb-3">
-                                    <label className="form-label">Storage Conditions</label>
-                                    <input type="text" className="form-control" name="storage" value={editedProduct.storage} onChange={handleChange} />
-                                </div>
-                                <div className="col-md-6 mb-3">
-                                    <label className="form-label">COD Available (Text)</label>
-                                    <input type="text" className="form-control" name="cashOnDelivery" value={editedProduct.cashOnDelivery} onChange={handleChange} />
-                                </div>
-                                <div className="col-md-6 mb-3">
-                                    <label className="form-label">Dosage/How To Use</label>
-                                    <input type="text" className="form-control" name="dosage" value={editedProduct.dosage} onChange={handleChange} />
-                                </div>
-                            </div>
+  // ✅ HANDLE INPUT CHANGE
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
 
-                            <h6 className="mt-2 text-info">Detail Descriptions</h6>
-                            <hr className="my-2"/>
+    if (type === "checkbox") {
+      return setForm((p) => ({ ...p, [name]: checked }));
+    }
 
-                            <div className="row">
-                                <div className="col-md-6 mb-3">
-                                    <label className="form-label">Manufactured By</label>
-                                    <input type="text" className="form-control" name="manufacturedBy" value={editedProduct.manufacturedBy} onChange={handleChange} />
-                                </div>
-                                <div className="col-md-6 mb-3">
-                                    <label className="form-label">Marketed By</label>
-                                    <input type="text" className="form-control" name="marketedBy" value={editedProduct.marketedBy} onChange={handleChange} />
-                                </div>
-                            </div>
-                            
-                            <div className="mb-3">
-                                <label className="form-label">Description</label>
-                                <textarea className="form-control" rows="3" name="description" value={editedProduct.description} onChange={handleChange}></textarea>
-                            </div>
-                            <div className="mb-3">
-                                <label className="form-label">Composition Snippet</label>
-                                <textarea className="form-control" rows="3" name="composition" value={editedProduct.composition} onChange={handleChange}></textarea>
-                            </div>
-                            <div className="mb-3">
-                                <label className="form-label">Additional Information (Enter each step/point on a new line)</label>
-                                <textarea className="form-control" rows="4" name="additionalInformation" value={editedProduct.additionalInformation} onChange={handleChange}></textarea>
-                            </div>
+    if (name === "categoryId") {
+      const cat = categories.find((c) => c.id === value);
+      return setForm((p) => ({
+        ...p,
+        categoryId: value,
+        categoryName: cat ? cat.name : "",
+      }));
+    }
 
-                        </div>
-                        <div className="modal-footer">
-                            <button type="button" className="btn btn-secondary rounded-pill" onClick={onClose}>Cancel</button>
-                            <button 
-                                type="submit" 
-                                className="btn btn-info rounded-pill text-white"
-                                disabled={isUploading} 
-                            >
-                                {isUploading ? "Uploading..." : "Save Changes"} 
-                            </button>
-                        </div>
-                    </form>
-                </div>
+    if (name === "brandId") {
+      const b = brands.find((c) => c.id === value);
+      return setForm((p) => ({
+        ...p,
+        brandId: value,
+        brandName: b ? b.name : "",
+      }));
+    }
+
+    const numeric = ["price", "offerPrice", "taxAmount", "stock", "rating"]; // 'rating' added
+    const newValue = numeric.includes(name)
+      ? value === "" ? "" : Number(value)
+      : value;
+
+    setForm((p) => ({ ...p, [name]: newValue }));
+  };
+
+  // ✅ Split comma/newline URLs
+  const splitUrls = (txt) =>
+    txt.split(/\n|,/)
+      .map((s) => s.trim())
+      .filter((s) => s.startsWith("http"));
+
+  // ✅ Upload files
+  const uploadFiles = async (files, folder, accept = () => true) => {
+    const urls = [];
+    for (const file of files) {
+      if (!accept(file)) continue;
+
+      const path = `${folder}/${Date.now()}-${file.name}`;
+      const r = ref(storage, path);
+
+      await uploadBytes(r, file);
+      const url = await getDownloadURL(r);
+
+      urls.push(url);
+    }
+    return urls;
+  };
+
+  // ✅ Remove media
+  const removeImageAt = (i) =>
+    setForm((p) => ({
+      ...p,
+      imageUrl: p.imageUrl.filter((_, idx) => idx !== i),
+    }));
+
+  const removeVideoAt = (i) =>
+    setForm((p) => ({
+      ...p,
+      videoUrl: p.videoUrl.filter((_, idx) => idx !== i),
+    }));
+
+  // ✅ SAVE EDIT
+  const handleSave = async (e) => {
+    e.preventDefault();
+
+    if (!form.categoryId) return alert("Select category");
+    if (!form.brandId) return alert("Select brand");
+
+    setIsUploading(true);
+
+    try {
+      // ✅ New uploads
+      const newImageUploads = await uploadFiles(
+        imageFiles,
+        "products/images",
+        (f) => f.type.startsWith("image/")
+      );
+
+      const newVideoUploads = await uploadFiles(
+        videoFiles,
+        "products/videos",
+        (f) => f.name.toLowerCase().endsWith(".mp4")
+      );
+
+      // ✅ pasted URLs
+      const pastedImageUrls = splitUrls(imageUrlsText);
+      const pastedVideoUrls = splitUrls(videoUrlsText);
+
+      // ✅ final arrays
+      const imageUrl = [...form.imageUrl, ...newImageUploads, ...pastedImageUrls];
+      const videoUrl = [...form.videoUrl, ...newVideoUploads, ...pastedVideoUrls];
+
+      const finalData = {
+        id: form.id,
+        title: form.title,
+        description: form.description,
+
+        price: Number(form.price),
+        offerPrice: Number(form.offerPrice),
+
+        // START: All fields included in finalData
+        netVolume: form.netVolume,
+        dosage: form.dosage,
+        ingredients: form.ingredients,
+        composition: form.composition,
+        storage: form.storage,
+        manufacturedBy: form.manufacturedBy,
+        marketedBy: form.marketedBy,
+        shelfLife: form.shelfLife,
+        additionalInformation: form.additionalInformation,
+
+        stock: Number(form.stock),
+        taxAmount: Number(form.taxAmount),
+        cashOnDelivery: form.cashOnDelivery,
+        rating: Number(form.rating),
+        isBestSelling: form.isBestSelling,
+        // END: All fields included in finalData
+
+        categoryId: form.categoryId,
+        brandId: form.brandId,
+        categoryName: form.categoryName,
+        brandName: form.brandName,
+
+        sellerid: form.sellerid, // Ensure this key is correct
+
+        imageUrl,
+        videoUrl,
+      };
+
+      await onSave(finalData);
+
+      if (isMounted.current) onClose();
+    } catch (err) {
+      console.error("Edit save error:", err);
+      alert("Failed to update product.");
+    } finally {
+      if (isMounted.current) setIsUploading(false);
+    }
+  };
+
+  return (
+    <div
+      className="modal show d-block"
+      tabIndex="-1"
+      style={{ background: "rgba(0,0,0,0.5)" }}
+    >
+      <div className="modal-dialog modal-xl">
+        <div className="modal-content shadow-lg rounded-4">
+          <form onSubmit={handleSave}>
+            <div className="modal-header bg-info text-white">
+              <h5 className="modal-title">Edit Product</h5>
+              <button type="button" className="btn-close btn-close-white" onClick={onClose}></button>
             </div>
+
+            <div className="modal-body">
+              {/* ------------ CORE ------------ */}
+              <h6 className="text-info mb-3">Core</h6>
+              <div className="row g-3">
+                <div className="col-md-6">
+                  <label className="form-label">Title</label>
+                  <input name="title" value={form.title} onChange={handleChange} className="form-control" required />
+                </div>
+
+                {/* START: Seller ID Added */}
+                <div className="col-md-6">
+                  <label className="form-label">Seller ID</label>
+                  <input name="sellerid" value={form.sellerid} className="form-control" readOnly disabled />
+                </div>
+                {/* END: Seller ID Added */}
+
+                <div className="col-md-3">
+                  <label className="form-label">Price</label>
+                  <input name="price" type="number" value={form.price} onChange={handleChange} className="form-control" required />
+                </div>
+
+                <div className="col-md-3">
+                  <label className="form-label">Offer Price</label>
+                  <input name="offerPrice" type="number" value={form.offerPrice} onChange={handleChange} className="form-control" />
+                </div>
+
+                <div className="col-md-12">
+                  <label>Description</label>
+                  <textarea name="description" rows="3" value={form.description} onChange={handleChange} className="form-control" required />
+                </div>
+              </div>
+
+              {/* ------------ CATEGORY ------------ */}
+              <h6 className="text-info mt-4 mb-2">Categorization</h6>
+              <div className="row g-3">
+                <div className="col-md-6">
+                  <label>Category</label>
+                  <select
+                    name="categoryId"
+                    className="form-select"
+                    value={form.categoryId}
+                    onChange={handleChange}
+                    disabled={loadingCategories}
+                    required
+                  >
+                    <option value="">Select Category</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-md-6">
+                  <label>Brand</label>
+                  <select
+                    name="brandId"
+                    className="form-select"
+                    value={form.brandId}
+                    onChange={handleChange}
+                    disabled={loadingBrands}
+                    required
+                  >
+                    <option value="">Select Brand</option>
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* ------------ INVENTORY ------------ */}
+              <h6 className="text-info mt-4 mb-2">Inventory</h6>
+              <div className="row g-3">
+
+                <div className="col-md-3">
+                  <label>Net Volume</label>
+                  <input className="form-control" name="netVolume" value={form.netVolume} onChange={handleChange} />
+                </div>
+
+                <div className="col-md-3">
+                  <label>Stock</label>
+                  <input type="number" className="form-control" name="stock" value={form.stock} onChange={handleChange} />
+                </div>
+
+                <div className="col-md-3">
+                  <label>Tax Amount (%)</label>
+                  <input type="number" className="form-control" name="taxAmount" value={form.taxAmount} onChange={handleChange} />
+                </div>
+
+                <div className="col-md-3">
+                  <label>Cash on Delivery</label>
+                  <select className="form-select" name="cashOnDelivery" value={form.cashOnDelivery} onChange={handleChange}>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                
+                <div className="col-md-3">
+                  <label>Rating</label>
+                  <input type="number" min="0" max="5" step="0.1" className="form-control" name="rating" value={form.rating} onChange={handleChange} />
+                </div>
+
+                <div className="col-md-3">
+                  <label>Best Selling</label>
+                  <div className="form-check form-switch mt-2">
+                    <input type="checkbox" className="form-check-input" name="isBestSelling" checked={form.isBestSelling} onChange={handleChange} />
+                  </div>
+                </div>
+              </div>
+
+              {/* ------------ DETAILS (New Section) ------------ */}
+              <h6 className="text-info mt-4 mb-2">Details</h6>
+              <div className="row g-3">
+                <div className="col-md-4">
+                  <label className="form-label">Dosage</label>
+                  <input className="form-control" name="dosage" value={form.dosage} onChange={handleChange} />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Ingredients</label>
+                  <input className="form-control" name="ingredients" value={form.ingredients} onChange={handleChange} />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Composition</label>
+                  <input className="form-control" name="composition" value={form.composition} onChange={handleChange} />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Storage</label>
+                  <input className="form-control" name="storage" value={form.storage} onChange={handleChange} />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Manufactured By</label>
+                  <input className="form-control" name="manufacturedBy" value={form.manufacturedBy} onChange={handleChange} />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Marketed By</label>
+                  <input className="form-control" name="marketedBy" value={form.marketedBy} onChange={handleChange} />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Shelf Life</label>
+                  <input className="form-control" name="shelfLife" value={form.shelfLife} onChange={handleChange} />
+                </div>
+
+                <div className="col-md-8">
+                  <label className="form-label">Additional Info (Supports Q: A:)</label>
+                  <textarea rows="3" className="form-control" name="additionalInformation" value={form.additionalInformation} onChange={handleChange} />
+                </div>
+              </div>
+
+
+              {/* ------------ MEDIA ------------ */}
+              <h6 className="text-info mt-4 mb-2">Current Images</h6>
+              <div className="d-flex flex-wrap gap-2">
+                {form.imageUrl.map((src, i) => (
+                  <div key={i} className="position-relative">
+                    <img src={src} className="rounded border" style={{ width: 72, height: 72, objectFit: "cover" }} />
+                    <button type="button" className="btn btn-sm btn-danger position-absolute top-0 end-0" onClick={() => removeImageAt(i)}>✕</button>
+                  </div>
+                ))}
+              </div>
+
+              <h6 className="text-info mt-3 mb-2">Add More Images</h6>
+              <input type="file" accept="image/*" multiple className="form-control" onChange={(e) => setImageFiles([...e.target.files])} />
+              <textarea className="form-control mt-2" rows="2" placeholder="Paste image URLs" value={imageUrlsText} onChange={(e) => setImageUrlsText(e.target.value)} />
+
+              {/* ------------ VIDEOS ------------ */}
+              <h6 className="text-info mt-4 mb-2">Current Videos</h6>
+              <ul className="list-group">
+                {form.videoUrl.map((v, i) => (
+                  <li key={i} className="list-group-item d-flex justify-content-between">
+                    <span className="text-truncate" style={{ maxWidth: 460 }}>{v}</span>
+                    <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeVideoAt(i)}>
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+
+              <h6 className="text-info mt-3 mb-2">Add More Videos</h6>
+              <input type="file" accept="video/mp4" multiple className="form-control" onChange={(e) => setVideoFiles([...e.target.files])} />
+              <textarea className="form-control mt-2" rows="2" placeholder="Paste video URLs" value={videoUrlsText} onChange={(e) => setVideoUrlsText(e.target.value)} />
+
+            </div>
+
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary rounded-pill" onClick={onClose}>Cancel</button>
+              <button type="submit" className="btn btn-info text-white rounded-pill" disabled={isUploading}>
+                {isUploading ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </form>
         </div>
-    );
+      </div>
+    </div>
+  );
 };
 
 export default EditProductModal;
