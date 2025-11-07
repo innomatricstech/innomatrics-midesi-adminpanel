@@ -4,8 +4,8 @@
   /* Z-index lowered to 1040 to stay beneath the Offcanvas (1050) */
   z-index: 1040; 
   transition: all 0.3s ease-in-out;
-  margin-top: -60px;
-  margin-bottom: 20px;
+  margin-top: 1px;
+  margin-bottom: 70px;
 }
 
 

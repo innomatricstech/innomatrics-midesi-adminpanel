@@ -25,7 +25,7 @@ import { auth, onAuthStateChanged, signOut } from "./firebase";
 
 function App() {
   const [currentView, setCurrentView] = useState('Dashboard');
-  const HEADER_HEIGHT_PX = 56;
+
   
   // --- AUTH STATE ---
   const [user, setUser] = useState(null);
@@ -114,7 +114,7 @@ function App() {
     <div className="app-container">
       {/* Pass the function to show the confirmation dialog */}
       <Header onLogout={handleShowLogout} /> 
-      <div className="d-flex flex-grow-1" style={{ paddingTop: `${HEADER_HEIGHT_PX}px` }}>
+      <div className="d-flex flex-grow-1" >
         {/* Pass the function to show the confirmation dialog */}
         <Sidebar activeItem={currentView} onSelect={setCurrentView} onLogout={handleShowLogout} />
         <div className="main-content-wrapper w-100">

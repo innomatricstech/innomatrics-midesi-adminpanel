@@ -6,6 +6,8 @@
     /* Soft, professional off-white background */
     background: linear-gradient(135deg, #f7f9fc, #edf2f7);
     min-height: 100vh;
+    margin-top: 90px;
+    padding: 20px;
 }
 
 

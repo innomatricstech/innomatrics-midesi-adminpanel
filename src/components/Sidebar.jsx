@@ -1,16 +1,14 @@
 import React, { useState, useEffect } from "react";
 import "../styles/sidebar.css";
 import { Offcanvas } from "bootstrap";
-
-import Logo from "../assets/logo.jpg"
+import Logo from "../assets/logo.jpg";       // ✅ Full logo
+// import LogoSmall from "../assets/logo-small.png";  // Optional if you have small icon
 
 const Sidebar = ({ activeItem, onSelect }) => {
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     const checkWidth = () => {
-      // Logic for desktop (>= 992px): If expanded, check if it should collapse. We'll leave it expanded by default.
-      // Logic for mobile (< 992px): Always set collapsed to true (it becomes the offcanvas trigger).
       if (window.innerWidth >= 992 && collapsed) setCollapsed(false);
       else if (window.innerWidth < 992 && !collapsed) setCollapsed(true);
     };
@@ -72,15 +70,7 @@ const Sidebar = ({ activeItem, onSelect }) => {
                   } p-2 mb-1 mx-2 d-flex align-items-center`}
                   {...(isMobileView && { "data-bs-dismiss": "offcanvas" })}
                 >
-                  <span
-                    className="me-2 fs-6 sidebar-icon"
-                    style={{
-                      transition: "transform 0.2s ease-out",
-                      display: "inline-block",
-                    }}
-                  >
-                    {item.icon}
-                  </span>
+                  <span className="me-2 fs-6 sidebar-icon">{item.icon}</span>
                   {!(collapsed && !isMobileView) && item.name}
                 </a>
               </li>
@@ -93,42 +83,52 @@ const Sidebar = ({ activeItem, onSelect }) => {
 
   return (
     <>
-      {/* Mobile Offcanvas Sidebar */}
+      {/* ✅ Mobile Offcanvas Sidebar */}
       <div
         className="offcanvas offcanvas-start d-lg-none"
         tabIndex="-1"
         id="mobileSidebarOffcanvas"
       >
         <div className="offcanvas-header border-bottom">
-          <div className="d-flex align-items-center">
-             {/* ✅ Mobile Logo: Always show full logo in offcanvas */}
-            <img src={Logo} alt="MiDesi Logo" className="sidebar-logo" />
-          </div>
-          <button
-            type="button"
-            className="btn-close text-reset"
-            data-bs-dismiss="offcanvas"
-            aria-label="Close"
+          
+          {/* ✅ Full Logo in Mobile */}
+          <img
+            src={Logo}
+            alt="MiDesi Logo"
+            style={{ width: "140px", height: "auto" }}
           />
+
+          <button type="button" className="btn-close" data-bs-dismiss="offcanvas" />
         </div>
+
         <div className="offcanvas-body d-flex flex-column p-0">
           {renderNav(true)}
           <div className="mt-auto pt-3 text-center">© 2025 MiDesi</div>
         </div>
       </div>
 
-      {/* Desktop Sidebar */}
+      {/* ✅ Desktop Sidebar */}
       <div
         className={`sidebar-container d-none d-lg-flex flex-column ${
           collapsed ? "collapsed" : ""
         }`}
       >
-        <div className="d-flex align-items-center p-3 mb-3">
-          {/* ✅ Desktop Logo: Toggles between icon and full logo */}
+        {/* ✅ Logo Area */}
+        <div className="d-flex align-items-center justify-content-center p-3">
           {collapsed ? (
-            <img src={Logo} alt="MiDesi Icon" className="sidebar-logo-icon" />
+            // ✅ Small Icon logo (or scaled version)
+            <img
+              src={Logo}
+              alt="MiDesi Small Logo"
+              style={{ width: "45px", height: "45px", borderRadius: "8px" }}
+            />
           ) : (
-            <img src={Logo} alt="MiDesi Logo" className="sidebar-logo" />
+            // ✅ Full Logo
+            <img
+              src={Logo}
+              alt="MiDesi Full Logo"
+              style={{ width: "150px", height: "auto", marginTop:"50px" }}
+            />
           )}
         </div>
 
