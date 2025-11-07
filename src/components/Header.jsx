@@ -34,8 +34,10 @@ const Header = ({ onLogout }) => {
           Mi
         </span>
         <span className="fs-5 fw-bold" style={{ color: "#ffffff" }}>
-          Desi
+          Desi 
         </span>
+      
+       
       </div>
 
       {/* Logout / Action Button */}

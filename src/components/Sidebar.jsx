@@ -2,11 +2,15 @@ import React, { useState, useEffect } from "react";
 import "../styles/sidebar.css";
 import { Offcanvas } from "bootstrap";
 
+import Logo from "../assets/logo.jpg"
+
 const Sidebar = ({ activeItem, onSelect }) => {
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     const checkWidth = () => {
+      // Logic for desktop (>= 992px): If expanded, check if it should collapse. We'll leave it expanded by default.
+      // Logic for mobile (< 992px): Always set collapsed to true (it becomes the offcanvas trigger).
       if (window.innerWidth >= 992 && collapsed) setCollapsed(false);
       else if (window.innerWidth < 992 && !collapsed) setCollapsed(true);
     };
@@ -26,7 +30,7 @@ const Sidebar = ({ activeItem, onSelect }) => {
         { name: "Brands", icon: "💎" },
         { name: "Banners", icon: "🖼️" },
         { name: "Youtube Videos", icon: "⏯️" },
-        { name: "Stock Notifier", icon: "📈" }, // ✅ Added here
+        { name: "Stock Notifier", icon: "📈" },
       ],
     },
     {
@@ -97,8 +101,8 @@ const Sidebar = ({ activeItem, onSelect }) => {
       >
         <div className="offcanvas-header border-bottom">
           <div className="d-flex align-items-center">
-            <span className="fs-4 fw-bolder text-primary me-1">Mi</span>
-            <span className="fs-4 fw-bolder text-dark">Desi</span>
+             {/* ✅ Mobile Logo: Always show full logo in offcanvas */}
+            <img src={Logo} alt="MiDesi Logo" className="sidebar-logo" />
           </div>
           <button
             type="button"
@@ -119,11 +123,13 @@ const Sidebar = ({ activeItem, onSelect }) => {
           collapsed ? "collapsed" : ""
         }`}
       >
-        <div className="d-flex justify-content-between align-items-center p-3 mb-3">
-          <div className="d-flex align-items-center">
-            <span className="fs-4 fw-bolder text-primary me-1">Mi</span>
-            {!collapsed && <span className="fs-4 fw-bolder text-dark">Desi</span>}
-          </div>
+        <div className="d-flex align-items-center p-3 mb-3">
+          {/* ✅ Desktop Logo: Toggles between icon and full logo */}
+          {collapsed ? (
+            <img src={Logo} alt="MiDesi Icon" className="sidebar-logo-icon" />
+          ) : (
+            <img src={Logo} alt="MiDesi Logo" className="sidebar-logo" />
+          )}
         </div>
 
         {renderNav(false)}

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 
-// ✅ Recharts imports: PieChart, Pie, Cell, Legend added
+// Recharts imports
 import {
     LineChart,
     Line,
@@ -11,20 +11,17 @@ import {
     Tooltip,
     CartesianGrid,
     ResponsiveContainer,
-    PieChart, 
-    Pie,      
-    Cell,     
-    Legend    
+    PieChart,
+    Pie,
+    Cell,
+    Legend
 } from "recharts";
 
 import "bootstrap/dist/css/bootstrap.min.css";
-import "../styles/fixedheader.css";
 import "../styles/dashboard.css";
-import FixedHeader from "./FixedHeader";
 
-// ✅ StatCard Component (Updated to remove conflicting text classes)
+// ✅ StatCard Component
 const StatCard = ({ title, value, icon, colorClass, animationDelay }) => (
-    // Apply animation class and inline style for staggered delay
     <div 
         className={`card shadow border-0 h-100 rounded-4 animate-hover-lift stat-card-${colorClass} stat-card-animated`}
         style={{ animationDelay: `${animationDelay}ms` }}
@@ -38,9 +35,8 @@ const StatCard = ({ title, value, icon, colorClass, animationDelay }) => (
                     <span className="fs-4">{icon}</span>
                 </div>
             </div>
-            {/* REMOVED: text-muted */}
+
             <p className="mb-1 small fw-semibold text-uppercase">{title}</p>
-            {/* REMOVED: text-dark */}
             <h2 className="fw-bold mb-1">{value}</h2>
         </div>
     </div>
@@ -49,6 +45,7 @@ const StatCard = ({ title, value, icon, colorClass, animationDelay }) => (
 
 const Dashboard = () => {
 
+    // ✅ STATS
     const [stats, setStats] = useState({
         todayTotalOrders: 0,
         todayPending: 0,
@@ -59,18 +56,37 @@ const Dashboard = () => {
         totalCustomers: 0,
     });
 
-    // 🌟 PIE CHART COLORS synchronized with the new success/warning/danger palette 🌟
+    // ✅ ADMIN DATA
+    const [adminData, setAdminData] = useState(null);
+
+    const displayName = adminData?.name || "Admin";
+    const displayEmail = adminData?.email || "No Email";
+    const displayUid = adminData?.uid || adminData?.id || "Unknown UID";
+
+    const userPhoto =
+        adminData?.photoURL && adminData.photoURL !== "null"
+            ? adminData.photoURL
+            : "https://static.vecteezy.com/system/resources/previews/024/183/502/non_2x/male-avatar-portrait-of-a-young-man-with-a-beard-illustration-of-male-character-in-modern-color-style-vector.jpg";
+
     const PIE_DATA = [
-        { name: 'Delivered', value: 400, color: '#0d9488' }, // Dark Teal
-        { name: 'Pending', value: 300, color: '#f59e0b' },   // Dark Gold
-        { name: 'Canceled', value: 300, color: '#dc2626' },  // Deep Red
+        { name: 'Delivered', value: 400, color: '#0d9488' },
+        { name: 'Pending', value: 300, color: '#f59e0b' },
+        { name: 'Canceled', value: 300, color: '#dc2626' },
     ];
 
-    // ✅ Fetch counts from Firestore
     useEffect(() => {
-        const fetchCounts = async () => {
-            // ... (Firebase fetch logic remains the same)
+        const fetchData = async () => {
             try {
+                // ✅ Fetch Admin Data
+                const adminSnap = await getDocs(collection(db, "admins"));
+                if (!adminSnap.empty) {
+                    setAdminData({
+                        id: adminSnap.docs[0].id,
+                        ...adminSnap.docs[0].data(),
+                    });
+                }
+
+                // ✅ Fetch Stats
                 const partnersSnap = await getDocs(collection(db, "partners"));
                 const customersSnap = await getDocs(collection(db, "customers"));
                 const productsSnap = await getDocs(collection(db, "products"));
@@ -81,24 +97,51 @@ const Dashboard = () => {
                     totalCustomers: customersSnap.size,
                     totalProducts: productsSnap.size,
                 }));
+
             } catch (error) {
                 console.error("Firestore fetch error:", error);
             }
         };
 
-        fetchCounts();
+        fetchData();
     }, []);
 
     return (
         <div className="flex-fill bg-light" style={{ minHeight: "100vh" }}>
-            <FixedHeader />
+
+            {/* ✅ ADMIN PROFILE CARD */}
+          <div
+    className="card shadow border-0 rounded-4 p-3 mb-4 d-flex align-items-center flex-sm-row flex-column text-center text-sm-start"
+    style={{ marginTop: "-30px" }}   // ✅ Reduce top gap
+>
+
+    <img
+        src={userPhoto}
+        alt={displayName}
+        className="rounded-circle shadow-sm border border-2"
+        width="80"
+        height="80"
+        style={{
+            objectFit: "cover",
+          
+        }}
+    />
+
+                <div className="ms-sm-4 mt-3 mt-sm-0">
+                    <h5 className="fw-bold mb-1">{displayName}</h5>
+                    <p className="text-muted mb-1">{displayEmail}</p>
+                    <p className="text-muted small mb-0">
+                        <strong>User ID:</strong> {displayUid}
+                    </p>
+                </div>
+            </div>
+
 
             <main className="p-4">
 
                 {/* ✅ Today's Order Summary */}
                 <h5 className="fw-bold mb-3">Today's Order Summary</h5>
                 <div className="row g-4 mb-4">
-                    {/* Staggered animation delay for stat cards (4 cards) */}
                     <div className="col-lg-3 col-md-6">
                         <StatCard title="Today's Total Orders" value={stats.todayTotalOrders} icon="🧾" colorClass="primary" animationDelay={0} />
                     </div>
@@ -116,7 +159,6 @@ const Dashboard = () => {
                 {/* ✅ Overall Stats */}
                 <h5 className="fw-bold mb-3">Overall Business Stats</h5>
                 <div className="row g-4 mb-4">
-                    {/* Staggered animation delay for stat cards (3 cards) */}
                     <div className="col-lg-4 col-md-6">
                         <StatCard title="Total Products" value={stats.totalProducts} icon="📦" colorClass="info" animationDelay={400} />
                     </div>
@@ -128,8 +170,9 @@ const Dashboard = () => {
                     </div>
                 </div>
 
-                {/* ✅ Orders Charts (Line Chart and new Pie Chart) */}
+                {/* ✅ Charts */}
                 <div className="row g-4">
+
                     {/* Line Chart */}
                     <div className="col-lg-6">
                         <div className="card shadow-lg border-0 rounded-4 animate-hover-lift chart-card">
@@ -147,16 +190,8 @@ const Dashboard = () => {
                                             <CartesianGrid strokeDasharray="5 5" stroke="#e5e7eb" />
                                             <XAxis dataKey="name" tick={{ fill: '#6b7280', fontWeight: 600 }} />
                                             <YAxis tick={{ fill: '#6b7280', fontWeight: 600 }} />
-                                            <Tooltip contentStyle={{
-                                                borderRadius: '12px',
-                                                padding: '10px',
-                                                border: 'none',
-                                                boxShadow: '0 5px 20px rgba(0,0,0,0.1)'
-                                            }} />
-                                            {/* Line stroke matches the Deep Blue color */}
-                                            <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={4}
-                                                dot={{ r: 5, fill: '#2563eb' }}
-                                                activeDot={{ r: 8 }} />
+                                            <Tooltip />
+                                            <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={4} />
                                         </LineChart>
                                     </ResponsiveContainer>
                                 </div>
@@ -164,49 +199,28 @@ const Dashboard = () => {
                         </div>
                     </div>
 
-                    {/* PIE Chart */}
+                    {/* Pie Chart */}
                     <div className="col-lg-6">
                         <div className="card shadow-lg border-0 rounded-4 animate-hover-lift chart-card">
                             <div className="card-body">
                                 <h5 className="card-title fw-semibold">Orders by Status (Overall)</h5>
-                                <div className="chart-container d-flex justify-content-center align-items-center">
-                                    <ResponsiveContainer width="100%" height={260}>
-                                        <PieChart>
-                                            <Pie
-                                                data={PIE_DATA}
-                                                dataKey="value"
-                                                nameKey="name"
-                                                cx="50%"
-                                                cy="50%"
-                                                outerRadius={90}
-                                                fill="#8884d8"
-                                                labelLine={false}
-                                                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                                            >
-                                                {/* Cells use the updated PIE_DATA colors */}
-                                                {PIE_DATA.map((entry, index) => (
-                                                    <Cell key={`cell-${index}`} fill={entry.color} />
-                                                ))}
-                                            </Pie>
-                                            <Legend
-                                                layout="horizontal"
-                                                verticalAlign="bottom"
-                                                align="center"
-                                                wrapperStyle={{
-                                                    paddingTop: '10px',
-                                                    fontSize: '0.9rem',
-                                                    fontWeight: '500',
-                                                }}
-                                            />
-                                            <Tooltip contentStyle={{
-                                                borderRadius: '12px',
-                                                padding: '10px',
-                                                border: 'none',
-                                                boxShadow: '0 5px 20px rgba(0,0,0,0.1)'
-                                            }} />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                </div>
+                                <ResponsiveContainer width="100%" height={260}>
+                                    <PieChart>
+                                        <Pie
+                                            data={PIE_DATA}
+                                            dataKey="value"
+                                            nameKey="name"
+                                            outerRadius={90}
+                                            labelLine={false}
+                                        >
+                                            {PIE_DATA.map((entry, index) => (
+                                                <Cell key={index} fill={entry.color} />
+                                            ))}
+                                        </Pie>
+                                        <Legend />
+                                        <Tooltip />
+                                    </PieChart>
+                                </ResponsiveContainer>
                             </div>
                         </div>
                     </div>
