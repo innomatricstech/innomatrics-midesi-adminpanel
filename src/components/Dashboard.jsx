@@ -42,7 +42,6 @@ const StatCard = ({ title, value, icon, colorClass, animationDelay }) => (
     </div>
 );
 
-
 const Dashboard = () => {
 
     // ✅ STATS
@@ -58,6 +57,9 @@ const Dashboard = () => {
 
     // ✅ ADMIN DATA
     const [adminData, setAdminData] = useState(null);
+
+    // ✅ DAILY ORDERS LIST
+    const [todayOrders, setTodayOrders] = useState([]);
 
     const displayName = adminData?.name || "Admin";
     const displayEmail = adminData?.email || "No Email";
@@ -86,7 +88,37 @@ const Dashboard = () => {
                     });
                 }
 
-                // ✅ Fetch Stats
+                // =============================
+                // ✅ Fetch Today's Orders
+                // =============================
+                const todayStart = new Date();
+                todayStart.setHours(0, 0, 0, 0);
+
+                const todayEnd = new Date();
+                todayEnd.setHours(23, 59, 59, 999);
+
+                const ordersSnap = await getDocs(collection(db, "orders"));
+                const allOrders = ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                const todaysOrders = allOrders.filter(order => {
+                    if (!order.createdAt) return false;
+                    const orderDate = new Date(order.createdAt);
+                    return orderDate >= todayStart && orderDate <= todayEnd;
+                });
+
+                setTodayOrders(todaysOrders);
+
+                setStats(prev => ({
+                    ...prev,
+                    todayTotalOrders: todaysOrders.length,
+                    todayPending: todaysOrders.filter(o => o.status === "pending").length,
+                    todayCanceled: todaysOrders.filter(o => o.status === "canceled").length,
+                    todayDelivered: todaysOrders.filter(o => o.status === "delivered").length,
+                }));
+
+                // =============================
+                // Fetch Total Stats (Products, Partners, Customers)
+                // =============================
                 const partnersSnap = await getDocs(collection(db, "partners"));
                 const customersSnap = await getDocs(collection(db, "customers"));
                 const productsSnap = await getDocs(collection(db, "products"));
@@ -110,22 +142,18 @@ const Dashboard = () => {
         <div className="flex-fill bg-light" style={{ minHeight: "100vh" }}>
 
             {/* ✅ ADMIN PROFILE CARD */}
-          <div
-    className="card shadow border-0 rounded-4 p-3 mb-4 d-flex align-items-center flex-sm-row flex-column text-center text-sm-start"
-    style={{ marginTop: "-30px" }}   // ✅ Reduce top gap
->
-
-    <img
-        src={userPhoto}
-        alt={displayName}
-        className="rounded-circle shadow-sm border border-2"
-        width="80"
-        height="80"
-        style={{
-            objectFit: "cover",
-          
-        }}
-    />
+            <div
+                className="card shadow border-0 rounded-4 p-3 mb-4 d-flex align-items-center flex-sm-row flex-column text-center text-sm-start"
+                style={{ marginTop: "-30px" }}
+            >
+                <img
+                    src={userPhoto}
+                    alt={displayName}
+                    className="rounded-circle shadow-sm border border-2"
+                    width="80"
+                    height="80"
+                    style={{ objectFit: "cover" }}
+                />
 
                 <div className="ms-sm-4 mt-3 mt-sm-0">
                     <h5 className="fw-bold mb-1">{displayName}</h5>
@@ -136,10 +164,11 @@ const Dashboard = () => {
                 </div>
             </div>
 
-
             <main className="p-4">
 
+                {/* ==================================================== */}
                 {/* ✅ Today's Order Summary */}
+                {/* ==================================================== */}
                 <h5 className="fw-bold mb-3">Today's Order Summary</h5>
                 <div className="row g-4 mb-4">
                     <div className="col-lg-3 col-md-6">
@@ -156,7 +185,9 @@ const Dashboard = () => {
                     </div>
                 </div>
 
-                {/* ✅ Overall Stats */}
+                {/* ==================================================== */}
+                {/* Overall Stats */}
+                {/* ==================================================== */}
                 <h5 className="fw-bold mb-3">Overall Business Stats</h5>
                 <div className="row g-4 mb-4">
                     <div className="col-lg-4 col-md-6">
@@ -170,7 +201,6 @@ const Dashboard = () => {
                     </div>
                 </div>
 
-                {/* ✅ Charts */}
                 <div className="row g-4">
 
                     {/* Line Chart */}
@@ -187,11 +217,11 @@ const Dashboard = () => {
                                             { name: 'Apr', value: 60 },
                                             { name: 'May', value: 75 },
                                         ]}>
-                                            <CartesianGrid strokeDasharray="5 5" stroke="#e5e7eb" />
-                                            <XAxis dataKey="name" tick={{ fill: '#6b7280', fontWeight: 600 }} />
-                                            <YAxis tick={{ fill: '#6b7280', fontWeight: 600 }} />
+                                            <CartesianGrid strokeDasharray="5 5" />
+                                            <XAxis dataKey="name" />
+                                            <YAxis />
                                             <Tooltip />
-                                            <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={4} />
+                                            <Line type="monotone" dataKey="value" strokeWidth={4} />
                                         </LineChart>
                                     </ResponsiveContainer>
                                 </div>
@@ -225,6 +255,55 @@ const Dashboard = () => {
                         </div>
                     </div>
 
+                </div>
+
+                {/* ==================================================== */}
+                {/* ✅ DAILY ORDER LIST TABLE */}
+                {/* ==================================================== */}
+                <div className="card shadow border-0 rounded-4 mt-4 mb-5">
+                    <div className="card-body">
+                        <h5 className="fw-bold mb-3">Today's Orders</h5>
+
+                        {todayOrders.length === 0 ? (
+                            <p className="text-muted">No orders placed today.</p>
+                        ) : (
+                            <div className="table-responsive">
+                                <table className="table align-middle">
+                                    <thead className="table-light">
+                                        <tr>
+                                            <th>Order ID</th>
+                                            <th>Customer</th>
+                                            <th>Total Amount</th>
+                                            <th>Status</th>
+                                            <th>Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {todayOrders.map((order) => (
+                                            <tr key={order.id}>
+                                                <td>{order.id}</td>
+                                                <td>{order.customerName || "N/A"}</td>
+                                                <td>₹{order.totalAmount || 0}</td>
+                                                <td>
+                                                    <span className={`badge 
+                                                        ${order.status === "delivered" ? "bg-success" : ""}
+                                                        ${order.status === "pending" ? "bg-warning text-dark" : ""}
+                                                        ${order.status === "canceled" ? "bg-danger" : ""}`}>
+                                                        {order.status}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    {order.createdAt
+                                                        ? new Date(order.createdAt).toLocaleTimeString()
+                                                        : "N/A"}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </main>
         </div>

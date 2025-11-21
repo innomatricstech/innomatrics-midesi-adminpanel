@@ -17,6 +17,22 @@ import EditProductModal from "./EditProductModal";
 import ViewProductModal from "./ViewProductModal";
 import DeleteConfirmationModal from "./DeleteConfirmationModal";
 
+/* Keyword generator */
+const generateKeywords = (text) => {
+  if (!text) return [];
+  const words = text.toLowerCase().trim().split(" ");
+  const keywords = new Set();
+  words.forEach((word) => {
+    let prefix = "";
+    for (let i = 0; i < word.length; i++) {
+      prefix += word[i];
+      keywords.add(prefix);
+    }
+  });
+  keywords.add(text.toLowerCase());
+  return Array.from(keywords);
+};
+
 const ProductList = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,7 +43,7 @@ const ProductList = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [currentAdminUser, setCurrentAdminUser] = useState(null);
 
-  // ✅ AUTH LISTENER
+  /* Auth listener + fetch products */
   useEffect(() => {
     let unsubAuth;
     try {
@@ -37,7 +53,6 @@ const ProductList = () => {
       console.error("Auth listener error:", e);
     }
 
-    // ✅ FETCH PRODUCTS
     const fetchAll = async () => {
       try {
         const snap = await getDocs(collection(db, "products"));
@@ -59,12 +74,10 @@ const ProductList = () => {
             id: d.id,
             productId: data.productId || d.id,
 
-            // images
             image: primaryImage,
             imageUrl: images,
             videoUrl: Array.isArray(data.videoUrl) ? data.videoUrl : [],
 
-            // info
             name: data.title || "Unknown Product",
             price: `₹${priceVal.toFixed(2)}`,
             offerPriceRaw: offerVal,
@@ -99,6 +112,13 @@ const ProductList = () => {
             storage: data.storage || "",
             isBestSelling: Boolean(data.isBestSelling),
             rating: Number(data.rating || 0),
+
+            keywords: data.keywords || [],
+
+            /* New fields */
+            deliveryCharges: Number(data.deliveryCharges || 0),
+            productCode: data.productCode || "",
+            hsnCode: data.hsnCode || "",
           };
         });
 
@@ -115,7 +135,7 @@ const ProductList = () => {
     return () => unsubAuth && unsubAuth();
   }, []);
 
-  // ✅ ADD PRODUCT
+  /* Add product */
   const handleAddProduct = async (newProductData) => {
     try {
       const firestoreData = {
@@ -125,7 +145,9 @@ const ProductList = () => {
         stock: Number(newProductData.stock),
         rating: Number(newProductData.rating || 0),
         taxAmount: Number(newProductData.taxAmount || 0),
-        sellerId: newProductData.sellerid, // NOTE: `sellerid` from AddProductModal is used
+
+
+        keywords: generateKeywords(newProductData.title),
       };
 
       const docRef = await addDoc(collection(db, "products"), firestoreData);
@@ -137,6 +159,7 @@ const ProductList = () => {
       const uiProduct = {
         id: docRef.id,
         productId: docRef.id,
+
         image: firestoreData.imageUrl?.[0] || "📦",
         imageUrl: firestoreData.imageUrl || [],
         videoUrl: firestoreData.videoUrl || [],
@@ -173,6 +196,13 @@ const ProductList = () => {
         storage: firestoreData.storage,
         isBestSelling: firestoreData.isBestSelling,
         rating: firestoreData.rating,
+
+        keywords: firestoreData.keywords,
+
+        /* New fields */
+        deliveryCharges: firestoreData.deliveryCharges || 0,
+        productCode: firestoreData.productCode || "",
+        hsnCode: firestoreData.hsnCode || "",
       };
 
       setProducts((prev) => [...prev, uiProduct]);
@@ -183,15 +213,20 @@ const ProductList = () => {
     }
   };
 
-  // ✅ ✅ ✅ EDIT PRODUCT (FIXED)
+  /* Edit product */
   const handleEditProduct = async (updatedProductData) => {
     try {
       const productRef = doc(db, "products", updatedProductData.id);
 
       const firestoreData = {
         title: updatedProductData.title,
+
+        keywords: generateKeywords(updatedProductData.title),
+
         description: updatedProductData.description,
         price: Number(updatedProductData.price),
+        offerPrice: Number(updatedProductData.offerPrice || 0),
+
         netVolume: updatedProductData.netVolume || "",
         dosage: updatedProductData.dosage || "",
         ingredients: updatedProductData.ingredients || "",
@@ -205,19 +240,19 @@ const ProductList = () => {
         stock: Number(updatedProductData.stock || 0),
         taxAmount: Number(updatedProductData.taxAmount || 0),
         cashOnDelivery: updatedProductData.cashOnDelivery || "No",
-        offerPrice: Number(updatedProductData.offerPrice || 0),
         isBestSelling: Boolean(updatedProductData.isBestSelling),
         rating: Number(updatedProductData.rating || 0),
+
+        deliveryCharges: Number(updatedProductData.deliveryCharges || 0),
+        productCode: updatedProductData.productCode || "",
+        hsnCode: updatedProductData.hsnCode || "",
 
         categoryId: updatedProductData.categoryId,
         brandId: updatedProductData.brandId,
         categoryName: updatedProductData.categoryName || "",
         brandName: updatedProductData.brandName || "",
 
-        // FIX: The EditProductModal sends 'sellerid' (lowercase 'id').
-        // We use 'sellerid' from the update payload and provide a fallback ("")
-        // to prevent Firebase from failing on `undefined`.
-        sellerId: updatedProductData.sellerid || updatedProductData.sellerId || "", 
+        sellerId: updatedProductData.sellerid || updatedProductData.sellerId || "",
 
         imageUrl: updatedProductData.imageUrl || [],
         videoUrl: updatedProductData.videoUrl || [],
@@ -225,20 +260,23 @@ const ProductList = () => {
 
       await updateDoc(productRef, firestoreData);
 
-      // ✅ Update UI immediately (FIXED)
       setProducts((prev) =>
         prev.map((p) =>
           p.id === updatedProductData.id
             ? {
                 ...p,
+
                 name: firestoreData.title,
                 description: firestoreData.description,
+
                 price: `₹${firestoreData.price.toFixed(2)}`,
                 offerPriceRaw: firestoreData.offerPrice,
+
                 sale:
                   firestoreData.price > 0
                     ? Math.round(
-                        ((firestoreData.price - firestoreData.offerPrice) /
+                        ((firestoreData.price -
+                          firestoreData.offerPrice) /
                           firestoreData.price) *
                           100
                       )
@@ -260,16 +298,25 @@ const ProductList = () => {
 
                 sellerId: firestoreData.sellerId,
                 taxAmount: firestoreData.taxAmount,
+
                 storage: firestoreData.storage,
                 dosage: firestoreData.dosage,
                 ingredients: firestoreData.ingredients,
                 composition: firestoreData.composition,
                 manufacturedBy: firestoreData.manufacturedBy,
                 marketedBy: firestoreData.marketedBy,
+
                 additionalInformation:
                   firestoreData.additionalInformation,
+
                 rating: firestoreData.rating,
                 isBestSelling: firestoreData.isBestSelling,
+
+                deliveryCharges: firestoreData.deliveryCharges,
+                productCode: firestoreData.productCode,
+                hsnCode: firestoreData.hsnCode,
+
+                keywords: firestoreData.keywords,
               }
             : p
         )
@@ -282,7 +329,7 @@ const ProductList = () => {
     }
   };
 
-  // ✅ DELETE PRODUCT
+  /* Delete */
   const handleDelete = async (productId) => {
     try {
       await deleteDoc(doc(db, "products", productId));
@@ -294,14 +341,16 @@ const ProductList = () => {
     }
   };
 
-  // ✅ SEARCH
-  const displayedProducts = products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  /* Search */
+  const displayedProducts = products.filter((p) => {
+    const t = searchTerm.toLowerCase();
+    return (
+      p.name.toLowerCase().includes(t) ||
+      p.id.toLowerCase().includes(t) ||
+      (p.keywords && p.keywords.some((k) => k.includes(t)))
+    );
+  });
 
-  // ✅ LOADING SCREEN
   if (loading) {
     return (
       <div
@@ -339,7 +388,7 @@ const ProductList = () => {
                   <th>Product</th>
                   <th>ID</th>
                   <th>Price</th>
-                  <th>Qty/Vol</th>
+                  <th>Qty</th>
                   <th>Sale</th>
                   <th>Stock</th>
                   <th className="text-center">Actions</th>
@@ -375,9 +424,7 @@ const ProductList = () => {
                             </div>
                           )}
 
-                          <span className="fw-semibold">
-                            {product.name}
-                          </span>
+                          <span className="fw-semibold">{product.name}</span>
                         </div>
                       </td>
 
@@ -397,9 +444,7 @@ const ProductList = () => {
                             In stock ({product.stockCount})
                           </span>
                         ) : (
-                          <span className="badge bg-danger">
-                            Out of stock
-                          </span>
+                          <span className="badge bg-danger">Out of stock</span>
                         )}
                       </td>
 
@@ -433,7 +478,6 @@ const ProductList = () => {
           </div>
         </div>
 
-        {/* ✅ MODALS */}
         {showAddModal && (
           <AddProductModal
             onClose={() => setShowAddModal(false)}

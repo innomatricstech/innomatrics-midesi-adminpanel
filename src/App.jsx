@@ -3,7 +3,7 @@ import Sidebar from './components/Sidebar';
 import ProductList from './components/Products/Products';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
-import OrderPage from './components/Order';
+import OrderPage from './components/Orders/Order.jsx';
 import CategoryList from './components/Categories';
 import BrandList from './components/Brands';
 import BannerList from "./components/Banners/BannerList"

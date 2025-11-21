@@ -63,14 +63,8 @@ const EditProductModal = ({ product, onClose, onSave }) => {
   const { brands, loading: loadingBrands } = useBrandFetcher();
 
   const isMounted = useRef(true);
+  useEffect(() => () => (isMounted.current = false), []);
 
-  useEffect(() => {
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
-
-  // ✅ Convert ProductList price → number
   const extractPrice = (price) => {
     if (!price) return 0;
     if (typeof price === "number") return price;
@@ -87,8 +81,7 @@ const EditProductModal = ({ product, onClose, onSave }) => {
     price: extractPrice(product.price),
     offerPrice: Number(product.offerPriceRaw || product.offerPrice || 0),
 
-    // START: Added/Updated fields from AddProductModal.jsx
-    netVolume: product.netVolume || product.quantity || "", // netVolume is preferred
+    netVolume: product.netVolume || product.quantity || "",
     dosage: product.dosage || "",
     ingredients: product.ingredients || "",
     composition: product.composition || "",
@@ -97,26 +90,29 @@ const EditProductModal = ({ product, onClose, onSave }) => {
     marketedBy: product.marketedBy || "",
     shelfLife: product.shelfLife || "",
     additionalInformation: product.additionalInformation || "",
-    // END: Added/Updated fields
 
     stock: Number(product.stockCount ?? 0),
     taxAmount: Number(product.taxAmount || 0),
-    cashOnDelivery: product.cashOnDelivery || "Yes", // Default to 'Yes'
+    cashOnDelivery: product.cashOnDelivery || "Yes",
     isBestSelling: Boolean(product.isBestSelling),
-    rating: Number(product.rating || 0), // Rating field added
+    rating: Number(product.rating || 0),
 
     categoryId: product.categoryId || "",
     brandId: product.brandId || "",
     categoryName: product.categoryName || "",
     brandName: product.brandName || "",
 
-    sellerid: product.sellerId || "", // Storing as 'sellerid' to match firestore field
-    
+    sellerid: product.sellerId || "",
+
+    // ✅ NEW FIELDS
+    deliveryCharges: product.deliveryCharges || 0,
+    productCode: product.productCode || "",
+    hsnCode: product.hsnCode || "",
+
     imageUrl: Array.isArray(product.imageUrl) ? product.imageUrl : [],
     videoUrl: Array.isArray(product.videoUrl) ? product.videoUrl : [],
   });
 
-  // ✅ FILE STATES
   const [imageFiles, setImageFiles] = useState([]);
   const [imageUrlsText, setImageUrlsText] = useState("");
   const [videoFiles, setVideoFiles] = useState([]);
@@ -124,7 +120,6 @@ const EditProductModal = ({ product, onClose, onSave }) => {
 
   const [isUploading, setIsUploading] = useState(false);
 
-  // ✅ HANDLE INPUT CHANGE
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
 
@@ -150,21 +145,28 @@ const EditProductModal = ({ product, onClose, onSave }) => {
       }));
     }
 
-    const numeric = ["price", "offerPrice", "taxAmount", "stock", "rating"]; // 'rating' added
-    const newValue = numeric.includes(name)
+    const numericFields = [
+      "price",
+      "offerPrice",
+      "taxAmount",
+      "stock",
+      "rating",
+      "deliveryCharges",
+    ];
+
+    const newValue = numericFields.includes(name)
       ? value === "" ? "" : Number(value)
       : value;
 
     setForm((p) => ({ ...p, [name]: newValue }));
   };
 
-  // ✅ Split comma/newline URLs
   const splitUrls = (txt) =>
-    txt.split(/\n|,/)
+    txt
+      .split(/\n|,/)
       .map((s) => s.trim())
       .filter((s) => s.startsWith("http"));
 
-  // ✅ Upload files
   const uploadFiles = async (files, folder, accept = () => true) => {
     const urls = [];
     for (const file of files) {
@@ -181,7 +183,6 @@ const EditProductModal = ({ product, onClose, onSave }) => {
     return urls;
   };
 
-  // ✅ Remove media
   const removeImageAt = (i) =>
     setForm((p) => ({
       ...p,
@@ -194,7 +195,7 @@ const EditProductModal = ({ product, onClose, onSave }) => {
       videoUrl: p.videoUrl.filter((_, idx) => idx !== i),
     }));
 
-  // ✅ SAVE EDIT
+  // ✅ SAVE
   const handleSave = async (e) => {
     e.preventDefault();
 
@@ -204,7 +205,6 @@ const EditProductModal = ({ product, onClose, onSave }) => {
     setIsUploading(true);
 
     try {
-      // ✅ New uploads
       const newImageUploads = await uploadFiles(
         imageFiles,
         "products/images",
@@ -217,53 +217,25 @@ const EditProductModal = ({ product, onClose, onSave }) => {
         (f) => f.name.toLowerCase().endsWith(".mp4")
       );
 
-      // ✅ pasted URLs
       const pastedImageUrls = splitUrls(imageUrlsText);
       const pastedVideoUrls = splitUrls(videoUrlsText);
 
-      // ✅ final arrays
       const imageUrl = [...form.imageUrl, ...newImageUploads, ...pastedImageUrls];
       const videoUrl = [...form.videoUrl, ...newVideoUploads, ...pastedVideoUrls];
 
       const finalData = {
-        id: form.id,
-        title: form.title,
-        description: form.description,
-
+        ...form,
         price: Number(form.price),
         offerPrice: Number(form.offerPrice),
-
-        // START: All fields included in finalData
-        netVolume: form.netVolume,
-        dosage: form.dosage,
-        ingredients: form.ingredients,
-        composition: form.composition,
-        storage: form.storage,
-        manufacturedBy: form.manufacturedBy,
-        marketedBy: form.marketedBy,
-        shelfLife: form.shelfLife,
-        additionalInformation: form.additionalInformation,
-
         stock: Number(form.stock),
         taxAmount: Number(form.taxAmount),
-        cashOnDelivery: form.cashOnDelivery,
         rating: Number(form.rating),
-        isBestSelling: form.isBestSelling,
-        // END: All fields included in finalData
-
-        categoryId: form.categoryId,
-        brandId: form.brandId,
-        categoryName: form.categoryName,
-        brandName: form.brandName,
-
-        sellerid: form.sellerid, // Ensure this key is correct
-
+        deliveryCharges: Number(form.deliveryCharges),
         imageUrl,
         videoUrl,
       };
 
       await onSave(finalData);
-
       if (isMounted.current) onClose();
     } catch (err) {
       console.error("Edit save error:", err);
@@ -274,215 +246,305 @@ const EditProductModal = ({ product, onClose, onSave }) => {
   };
 
   return (
-    <div
-      className="modal show d-block"
-      tabIndex="-1"
-      style={{ background: "rgba(0,0,0,0.5)" }}
-    >
+    <div className="modal show d-block" tabIndex="-1" style={{ background: "rgba(0,0,0,0.4)" }}>
       <div className="modal-dialog modal-xl">
-        <div className="modal-content shadow-lg rounded-4">
+        <div className="modal-content border-0 shadow-lg rounded-5 overflow-hidden">
+
+          {/* HEADER */}
+          <div className="modal-header" style={{ background: "#0dcaf0", color: "white" }}>
+            <h5 className="modal-title fw-bold">Edit Product</h5>
+            <button className="btn-close btn-close-white" onClick={onClose}></button>
+          </div>
+
+          {/* BODY */}
           <form onSubmit={handleSave}>
-            <div className="modal-header bg-info text-white">
-              <h5 className="modal-title">Edit Product</h5>
-              <button type="button" className="btn-close btn-close-white" onClick={onClose}></button>
-            </div>
+            <div className="modal-body p-4" style={{ maxHeight: "80vh", overflowY: "auto" }}>
 
-            <div className="modal-body">
-              {/* ------------ CORE ------------ */}
-              <h6 className="text-info mb-3">Core</h6>
-              <div className="row g-3">
-                <div className="col-md-6">
-                  <label className="form-label">Title</label>
-                  <input name="title" value={form.title} onChange={handleChange} className="form-control" required />
-                </div>
+              {/* SECTION CARD */}
+              <div className="p-3 mb-4 bg-light border rounded-4">
+                <h6 className="text-info fw-bold mb-3">Core</h6>
 
-                {/* START: Seller ID Added */}
-                <div className="col-md-6">
-                  <label className="form-label">Seller ID</label>
-                  <input name="sellerid" value={form.sellerid} className="form-control" readOnly disabled />
-                </div>
-                {/* END: Seller ID Added */}
+                <div className="row g-3">
+                  <div className="col-md-6 form-floating">
+                    <input
+                      name="title"
+                      className="form-control"
+                      placeholder="Title"
+                      value={form.title}
+                      onChange={handleChange}
+                      required
+                    />
+                    <label>Title</label>
+                  </div>
 
-                <div className="col-md-3">
-                  <label className="form-label">Price</label>
-                  <input name="price" type="number" value={form.price} onChange={handleChange} className="form-control" required />
-                </div>
+                  <div className="col-md-6 form-floating">
+                    <input
+                      name="sellerid"
+                      className="form-control"
+                      placeholder="Seller ID"
+                      value={form.sellerid}
+                      readOnly
+                      disabled
+                    />
+                    <label>Seller ID</label>
+                  </div>
 
-                <div className="col-md-3">
-                  <label className="form-label">Offer Price</label>
-                  <input name="offerPrice" type="number" value={form.offerPrice} onChange={handleChange} className="form-control" />
-                </div>
+                  <div className="col-md-3 form-floating">
+                    <input
+                      type="number"
+                      name="price"
+                      className="form-control"
+                      placeholder="Price"
+                      value={form.price}
+                      onChange={handleChange}
+                      required
+                    />
+                    <label>Price</label>
+                  </div>
 
-                <div className="col-md-12">
-                  <label>Description</label>
-                  <textarea name="description" rows="3" value={form.description} onChange={handleChange} className="form-control" required />
-                </div>
-              </div>
+                  <div className="col-md-3 form-floating">
+                    <input
+                      type="number"
+                      name="offerPrice"
+                      className="form-control"
+                      placeholder="Offer Price"
+                      value={form.offerPrice}
+                      onChange={handleChange}
+                    />
+                    <label>Offer Price</label>
+                  </div>
 
-              {/* ------------ CATEGORY ------------ */}
-              <h6 className="text-info mt-4 mb-2">Categorization</h6>
-              <div className="row g-3">
-                <div className="col-md-6">
-                  <label>Category</label>
-                  <select
-                    name="categoryId"
-                    className="form-select"
-                    value={form.categoryId}
-                    onChange={handleChange}
-                    disabled={loadingCategories}
-                    required
-                  >
-                    <option value="">Select Category</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="col-md-6">
-                  <label>Brand</label>
-                  <select
-                    name="brandId"
-                    className="form-select"
-                    value={form.brandId}
-                    onChange={handleChange}
-                    disabled={loadingBrands}
-                    required
-                  >
-                    <option value="">Select Brand</option>
-                    {brands.map((b) => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* ------------ INVENTORY ------------ */}
-              <h6 className="text-info mt-4 mb-2">Inventory</h6>
-              <div className="row g-3">
-
-                <div className="col-md-3">
-                  <label>Net Volume</label>
-                  <input className="form-control" name="netVolume" value={form.netVolume} onChange={handleChange} />
-                </div>
-
-                <div className="col-md-3">
-                  <label>Stock</label>
-                  <input type="number" className="form-control" name="stock" value={form.stock} onChange={handleChange} />
-                </div>
-
-                <div className="col-md-3">
-                  <label>Tax Amount (%)</label>
-                  <input type="number" className="form-control" name="taxAmount" value={form.taxAmount} onChange={handleChange} />
-                </div>
-
-                <div className="col-md-3">
-                  <label>Cash on Delivery</label>
-                  <select className="form-select" name="cashOnDelivery" value={form.cashOnDelivery} onChange={handleChange}>
-                    <option value="Yes">Yes</option>
-                    <option value="No">No</option>
-                  </select>
-                </div>
-                
-                <div className="col-md-3">
-                  <label>Rating</label>
-                  <input type="number" min="0" max="5" step="0.1" className="form-control" name="rating" value={form.rating} onChange={handleChange} />
-                </div>
-
-                <div className="col-md-3">
-                  <label>Best Selling</label>
-                  <div className="form-check form-switch mt-2">
-                    <input type="checkbox" className="form-check-input" name="isBestSelling" checked={form.isBestSelling} onChange={handleChange} />
+                  <div className="col-md-12">
+                    <label>Description</label>
+                    <textarea
+                      name="description"
+                      rows="3"
+                      className="form-control"
+                      value={form.description}
+                      onChange={handleChange}
+                      required
+                    />
                   </div>
                 </div>
               </div>
 
-              {/* ------------ DETAILS (New Section) ------------ */}
-              <h6 className="text-info mt-4 mb-2">Details</h6>
-              <div className="row g-3">
-                <div className="col-md-4">
-                  <label className="form-label">Dosage</label>
-                  <input className="form-control" name="dosage" value={form.dosage} onChange={handleChange} />
-                </div>
+              {/* CATEGORY CARD */}
+              <div className="p-3 mb-4 bg-light border rounded-4">
+                <h6 className="text-info fw-bold mb-3">Categorization</h6>
 
-                <div className="col-md-4">
-                  <label className="form-label">Ingredients</label>
-                  <input className="form-control" name="ingredients" value={form.ingredients} onChange={handleChange} />
-                </div>
-
-                <div className="col-md-4">
-                  <label className="form-label">Composition</label>
-                  <input className="form-control" name="composition" value={form.composition} onChange={handleChange} />
-                </div>
-
-                <div className="col-md-4">
-                  <label className="form-label">Storage</label>
-                  <input className="form-control" name="storage" value={form.storage} onChange={handleChange} />
-                </div>
-
-                <div className="col-md-4">
-                  <label className="form-label">Manufactured By</label>
-                  <input className="form-control" name="manufacturedBy" value={form.manufacturedBy} onChange={handleChange} />
-                </div>
-
-                <div className="col-md-4">
-                  <label className="form-label">Marketed By</label>
-                  <input className="form-control" name="marketedBy" value={form.marketedBy} onChange={handleChange} />
-                </div>
-
-                <div className="col-md-4">
-                  <label className="form-label">Shelf Life</label>
-                  <input className="form-control" name="shelfLife" value={form.shelfLife} onChange={handleChange} />
-                </div>
-
-                <div className="col-md-8">
-                  <label className="form-label">Additional Info (Supports Q: A:)</label>
-                  <textarea rows="3" className="form-control" name="additionalInformation" value={form.additionalInformation} onChange={handleChange} />
-                </div>
-              </div>
-
-
-              {/* ------------ MEDIA ------------ */}
-              <h6 className="text-info mt-4 mb-2">Current Images</h6>
-              <div className="d-flex flex-wrap gap-2">
-                {form.imageUrl.map((src, i) => (
-                  <div key={i} className="position-relative">
-                    <img src={src} className="rounded border" style={{ width: 72, height: 72, objectFit: "cover" }} />
-                    <button type="button" className="btn btn-sm btn-danger position-absolute top-0 end-0" onClick={() => removeImageAt(i)}>✕</button>
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <label>Category</label>
+                    <select
+                      className="form-select"
+                      name="categoryId"
+                      value={form.categoryId}
+                      onChange={handleChange}
+                      disabled={loadingCategories}
+                      required
+                    >
+                      <option value="">Select Category</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
                   </div>
-                ))}
+
+                  <div className="col-md-6">
+                    <label>Brand</label>
+                    <select
+                      className="form-select"
+                      name="brandId"
+                      value={form.brandId}
+                      onChange={handleChange}
+                      disabled={loadingBrands}
+                      required
+                    >
+                      <option value="">Select Brand</option>
+                      {brands.map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
-              <h6 className="text-info mt-3 mb-2">Add More Images</h6>
-              <input type="file" accept="image/*" multiple className="form-control" onChange={(e) => setImageFiles([...e.target.files])} />
-              <textarea className="form-control mt-2" rows="2" placeholder="Paste image URLs" value={imageUrlsText} onChange={(e) => setImageUrlsText(e.target.value)} />
+              {/* INVENTORY CARD */}
+              <div className="p-3 mb-4 bg-light border rounded-4">
+                <h6 className="text-info fw-bold mb-3">Inventory</h6>
 
-              {/* ------------ VIDEOS ------------ */}
-              <h6 className="text-info mt-4 mb-2">Current Videos</h6>
-              <ul className="list-group">
-                {form.videoUrl.map((v, i) => (
-                  <li key={i} className="list-group-item d-flex justify-content-between">
-                    <span className="text-truncate" style={{ maxWidth: 460 }}>{v}</span>
-                    <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeVideoAt(i)}>
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                <div className="row g-3">
+                  <div className="col-md-3 form-floating">
+                    <input name="netVolume" className="form-control" placeholder="Net Volume" value={form.netVolume} onChange={handleChange} />
+                    <label>Net Volume</label>
+                  </div>
 
-              <h6 className="text-info mt-3 mb-2">Add More Videos</h6>
-              <input type="file" accept="video/mp4" multiple className="form-control" onChange={(e) => setVideoFiles([...e.target.files])} />
-              <textarea className="form-control mt-2" rows="2" placeholder="Paste video URLs" value={videoUrlsText} onChange={(e) => setVideoUrlsText(e.target.value)} />
+                  <div className="col-md-3 form-floating">
+                    <input type="number" name="stock" className="form-control" placeholder="Stock" value={form.stock} onChange={handleChange} />
+                    <label>Stock</label>
+                  </div>
 
+                  <div className="col-md-3 form-floating">
+                    <input type="number" name="taxAmount" className="form-control" placeholder="Tax Amount" value={form.taxAmount} onChange={handleChange} />
+                    <label>Tax %</label>
+                  </div>
+
+                  <div className="col-md-3">
+                    <label>Cash on Delivery</label>
+                    <select name="cashOnDelivery" className="form-select" value={form.cashOnDelivery} onChange={handleChange}>
+                      <option value="Yes">Yes</option>
+                      <option value="No">No</option>
+                    </select>
+                  </div>
+
+                  <div className="col-md-3 form-floating">
+                    <input type="number" min="0" max="5" step="0.1" name="rating" className="form-control" placeholder="Rating" value={form.rating} onChange={handleChange} />
+                    <label>Rating</label>
+                  </div>
+
+                  <div className="col-md-3 d-flex align-items-center gap-2">
+                    <label className="me-3">Best Selling</label>
+                    <div className="form-check form-switch">
+                      <input type="checkbox" className="form-check-input" name="isBestSelling" checked={form.isBestSelling} onChange={handleChange} />
+                    </div>
+                  </div>
+
+                  <div className="col-md-3 form-floating">
+                    <input type="number" name="deliveryCharges" className="form-control" placeholder="Delivery Charges" value={form.deliveryCharges} onChange={handleChange} />
+                    <label>Delivery Charges</label>
+                  </div>
+
+                  <div className="col-md-3 form-floating">
+                    <input name="productCode" className="form-control" placeholder="Product Code" value={form.productCode} onChange={handleChange} />
+                    <label>Product Code</label>
+                  </div>
+
+                  <div className="col-md-3 form-floating">
+                    <input name="hsnCode" className="form-control" placeholder="HSN Code" value={form.hsnCode} onChange={handleChange} />
+                    <label>HSN Code</label>
+                  </div>
+                </div>
+              </div>
+
+              {/* DETAILS CARD */}
+              <div className="p-3 mb-4 bg-light border rounded-4">
+                <h6 className="text-info fw-bold mb-3">Details</h6>
+
+                <div className="row g-3">
+                  <div className="col-md-4 form-floating">
+                    <input name="dosage" className="form-control" placeholder="Dosage" value={form.dosage} onChange={handleChange} />
+                    <label>Dosage</label>
+                  </div>
+
+                  <div className="col-md-4 form-floating">
+                    <input name="ingredients" className="form-control" placeholder="Ingredients" value={form.ingredients} onChange={handleChange} />
+                    <label>Ingredients</label>
+                  </div>
+
+                  <div className="col-md-4 form-floating">
+                    <input name="composition" className="form-control" placeholder="Composition" value={form.composition} onChange={handleChange} />
+                    <label>Composition</label>
+                  </div>
+
+                  <div className="col-md-4 form-floating">
+                    <input name="storage" className="form-control" placeholder="Storage" value={form.storage} onChange={handleChange} />
+                    <label>Storage</label>
+                  </div>
+
+                  <div className="col-md-4 form-floating">
+                    <input name="manufacturedBy" className="form-control" placeholder="Manufactured By" value={form.manufacturedBy} onChange={handleChange} />
+                    <label>Manufactured By</label>
+                  </div>
+
+                  <div className="col-md-4 form-floating">
+                    <input name="marketedBy" className="form-control" placeholder="Marketed By" value={form.marketedBy} onChange={handleChange} />
+                    <label>Marketed By</label>
+                  </div>
+
+                  <div className="col-md-4 form-floating">
+                    <input name="shelfLife" className="form-control" placeholder="Shelf Life" value={form.shelfLife} onChange={handleChange} />
+                    <label>Shelf Life</label>
+                  </div>
+
+                  <div className="col-md-8">
+                    <label>Additional Information</label>
+                    <textarea
+                      rows="3"
+                      className="form-control"
+                      name="additionalInformation"
+                      value={form.additionalInformation}
+                      onChange={handleChange}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* MEDIA CARD */}
+              <div className="p-3 mb-4 bg-light border rounded-4">
+                <h6 className="text-info fw-bold mb-3">Product Media</h6>
+
+                <label className="fw-semibold">Current Images</label>
+                <div className="d-grid mb-3" style={{ gridTemplateColumns: "repeat(auto-fill, 90px)", gap: "12px" }}>
+                  {form.imageUrl.map((src, i) => (
+                    <div key={i} className="position-relative">
+                      <img src={src} className="rounded-3 shadow-sm border" style={{ width: 90, height: 90, objectFit: "cover" }} />
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm rounded-circle position-absolute top-0 end-0"
+                        style={{ transform: "translate(40%, -40%)" }}
+                        onClick={() => removeImageAt(i)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <label>Add Images</label>
+                <input type="file" className="form-control" accept="image/*" multiple onChange={(e) => setImageFiles([...e.target.files])} />
+                <textarea
+                  className="form-control mt-2"
+                  rows="2"
+                  placeholder="Paste image URLs"
+                  value={imageUrlsText}
+                  onChange={(e) => setImageUrlsText(e.target.value)}
+                />
+
+                <hr />
+
+                <label className="fw-semibold">Current Videos</label>
+                <ul className="list-group mb-3">
+                  {form.videoUrl.map((v, i) => (
+                    <li key={i} className="list-group-item d-flex justify-content-between align-items-center">
+                      <span className="text-truncate" style={{ maxWidth: 400 }}>{v}</span>
+                      <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => removeVideoAt(i)}>Remove</button>
+                    </li>
+                  ))}
+                </ul>
+
+                <label>Add Videos</label>
+                <input type="file" className="form-control" accept="video/mp4" multiple onChange={(e) => setVideoFiles([...e.target.files])} />
+                <textarea
+                  className="form-control mt-2"
+                  rows="2"
+                  placeholder="Paste video URLs"
+                  value={videoUrlsText}
+                  onChange={(e) => setVideoUrlsText(e.target.value)}
+                />
+              </div>
             </div>
 
-            <div className="modal-footer">
-              <button type="button" className="btn btn-secondary rounded-pill" onClick={onClose}>Cancel</button>
-              <button type="submit" className="btn btn-info text-white rounded-pill" disabled={isUploading}>
+            {/* FOOTER */}
+            <div className="modal-footer bg-light">
+              <button type="button" className="btn btn-secondary rounded-pill px-4" onClick={onClose}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-info text-white rounded-pill px-4" disabled={isUploading}>
                 {isUploading ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </form>
+
         </div>
       </div>
     </div>
