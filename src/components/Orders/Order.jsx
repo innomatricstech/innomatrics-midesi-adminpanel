@@ -18,7 +18,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 const CUSTOMER_COLLECTION_NAME = "customers";
 const ORDER_SUBCOLLECTION_NAME = "orders";
 const PRODUCT_COLLECTION_NAME = "products";
-const NOTIFICATION_API_URL = "https://mi-desi-notification-service.vercel.app/api/sendNotification";
+const NOTIFICATION_API_URL = "https://mi-desi.vercel.app/api/sendNotification";
 
 /* -------------------------- BADGE COLORS -------------------------- */
 const statusClass = (status) => {
