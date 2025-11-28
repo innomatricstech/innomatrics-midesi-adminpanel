@@ -1,17 +1,19 @@
 import https from "https";
 
 export default function handler(req, res) {
-  // ✅ CORS HEADERS
+
+  // ✅ Add CORS headers for every request
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  // ✅ Handle preflight
+  // ✅ Handle browser preflight
   if (req.method === "OPTIONS") {
     res.statusCode = 200;
     return res.end();
   }
 
+  // ✅ Allow only POST
   if (req.method !== "POST") {
     res.statusCode = 405;
     return res.end("Only POST allowed");
@@ -21,8 +23,10 @@ export default function handler(req, res) {
 
   req.on("data", chunk => body += chunk);
   req.on("end", () => {
+
     try {
       const data = JSON.parse(body || "{}");
+
       const { title, body: message, fcmToken, screen } = data;
 
       if (!title || !message || !fcmToken) {
@@ -30,7 +34,12 @@ export default function handler(req, res) {
         return res.end("Missing fields");
       }
 
-      const payload = JSON.stringify({ title, body: message, fcmToken, screen });
+      const payload = JSON.stringify({
+        title,
+        body: message,
+        fcmToken,
+        screen
+      });
 
       const request = https.request(
         "https://mi-desi-notification-service.vercel.app/api/sendNotification",
@@ -52,9 +61,9 @@ export default function handler(req, res) {
       );
 
       request.on("error", err => {
-        console.error("Proxy failed:", err);
+        console.error("Proxy error:", err);
         res.statusCode = 500;
-        res.end("Proxy error");
+        res.end("Proxy failed");
       });
 
       request.write(payload);
@@ -65,5 +74,6 @@ export default function handler(req, res) {
       res.statusCode = 500;
       res.end("Invalid JSON");
     }
+
   });
 }
