@@ -1,6 +1,17 @@
 import https from "https";
 
-export default async function handler(req, res) {
+export default function handler(req, res) {
+  // ✅ CORS HEADERS
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  // ✅ Handle preflight
+  if (req.method === "OPTIONS") {
+    res.statusCode = 200;
+    return res.end();
+  }
+
   if (req.method !== "POST") {
     res.statusCode = 405;
     return res.end("Only POST allowed");
@@ -8,10 +19,7 @@ export default async function handler(req, res) {
 
   let body = "";
 
-  req.on("data", chunk => {
-    body += chunk;
-  });
-
+  req.on("data", chunk => body += chunk);
   req.on("end", () => {
     try {
       const data = JSON.parse(body || "{}");
@@ -19,50 +27,41 @@ export default async function handler(req, res) {
 
       if (!title || !message || !fcmToken) {
         res.statusCode = 400;
-        return res.end("Missing required fields");
+        return res.end("Missing fields");
       }
 
-      const payload = JSON.stringify({
-        title,
-        body: message,
-        fcmToken,
-        screen
-      });
+      const payload = JSON.stringify({ title, body: message, fcmToken, screen });
 
-      const options = {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(payload)
-        }
-      };
-
-      const proxyReq = https.request(
+      const request = https.request(
         "https://mi-desi-notification-service.vercel.app/api/sendNotification",
-        options,
-        proxyRes => {
-          let responseData = "";
-
-          proxyRes.on("data", chunk => responseData += chunk);
-          proxyRes.on("end", () => {
-            res.statusCode = proxyRes.statusCode || 200;
-            res.setHeader("Content-Type", "application/json");
-            res.end(responseData);
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(payload)
+          }
+        },
+        response => {
+          let result = "";
+          response.on("data", chunk => result += chunk);
+          response.on("end", () => {
+            res.statusCode = response.statusCode || 200;
+            res.end(result);
           });
         }
       );
 
-      proxyReq.on("error", err => {
-        console.error("Proxy error:", err);
+      request.on("error", err => {
+        console.error("Proxy failed:", err);
         res.statusCode = 500;
-        res.end("Proxy failed");
+        res.end("Proxy error");
       });
 
-      proxyReq.write(payload);
-      proxyReq.end();
+      request.write(payload);
+      request.end();
 
-    } catch (error) {
-      console.error("Parse Error:", error);
+    } catch (err) {
+      console.error("Parse error:", err);
       res.statusCode = 500;
       res.end("Invalid JSON");
     }
