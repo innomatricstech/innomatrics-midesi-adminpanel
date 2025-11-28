@@ -8,7 +8,6 @@ import {
   deleteDoc,
   updateDoc,
   getDoc,
-  addDoc,
 } from "../../firebase";
 
 import ViewOrderModal from "./ViewOrderPage";
@@ -18,7 +17,6 @@ import "bootstrap/dist/css/bootstrap.min.css";
 const CUSTOMER_COLLECTION_NAME = "customers";
 const ORDER_SUBCOLLECTION_NAME = "orders";
 const PRODUCT_COLLECTION_NAME = "products";
-const NOTIFICATION_API_URL = "https://mi-desi.vercel.app/api/sendNotification";
 
 /* -------------------------- BADGE COLORS -------------------------- */
 const statusClass = (status) => {
@@ -34,140 +32,6 @@ const statusClass = (status) => {
     default:
       return "bg-secondary text-white";
   }
-};
-
-/* -------------------------- DATABASE NOTIFICATION STORAGE -------------------------- */
-const storeNotificationInDatabase = async (customerId, title, message, orderId, status) => {
-  try {
-    console.log("💾 Storing notification in database...");
-    
-    const notificationRef = await addDoc(collection(db, "pending_notifications"), {
-      customerId,
-      title,
-      message,
-      orderId,
-      status,
-      createdAt: new Date(),
-      delivered: false,
-      attempts: 0,
-      lastAttempt: null
-    });
-    
-    console.log("✅ Notification stored in database for later delivery. ID:", notificationRef.id);
-    return { 
-      success: true, 
-      method: "database-storage",
-      notificationId: notificationRef.id 
-    };
-  } catch (error) {
-    console.error("❌ Failed to store notification in database:", error);
-    throw error;
-  }
-};
-
-/* -------------------------- SIMPLE NOTIFICATION ATTEMPT -------------------------- */
-const attemptDirectNotification = async (customerId, title, message) => {
-  try {
-    const customerRef = doc(db, CUSTOMER_COLLECTION_NAME, customerId);
-    const customerSnap = await getDoc(customerRef);
-    
-    if (!customerSnap.exists()) {
-      return { success: false, error: "Customer not found" };
-    }
-
-    const customerData = customerSnap.data();
-    const fcmToken = customerData.fcmToken || customerData.notificationToken;
-
-    if (!fcmToken) {
-      return { success: false, error: "No FCM token found" };
-    }
-
-    const notificationData = {
-      title: title,
-      body: message,
-      fcmToken: fcmToken,
-      screen: "OrderDetails"
-    };
-
-    // Quick attempt with short timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-    try {
-      const response = await fetch(NOTIFICATION_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(notificationData),
-        signal: controller.signal,
-        mode: 'cors'
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        const result = await response.json();
-        return { success: true, data: result, method: "direct" };
-      } else {
-        return { success: false, error: `HTTP ${response.status}` };
-      }
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
-        return { success: false, error: "Request timeout" };
-      }
-      return { success: false, error: "CORS blocked - requires server-side fix" };
-    }
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-};
-
-/* -------------------------- NOTIFICATION SERVICE -------------------------- */
-const sendNotificationToCustomer = async (customerId, title, message, orderId = null, status = null) => {
-  try {
-    console.log("📢 Attempting to send notification to customer:", customerId);
-    
-    // First, try direct notification (will likely fail due to CORS)
-    const directResult = await attemptDirectNotification(customerId, title, message);
-    
-    if (directResult.success) {
-      console.log("🎉 Direct notification succeeded!");
-      return directResult;
-    }
-    
-    // If direct method fails (expected due to CORS), store in database
-    console.log("⚠️ Direct notification failed due to CORS, storing in database...");
-    const dbResult = await storeNotificationInDatabase(customerId, title, message, orderId, status);
-    return dbResult;
-
-  } catch (error) {
-    console.error("❌ All notification methods failed:", error);
-    return { 
-      success: false, 
-      error: "Notifications temporarily unavailable. Orders will still process successfully.",
-      retryable: false
-    };
-  }
-};
-
-/* -------------------------- RETRY NOTIFICATION SERVICE -------------------------- */
-const sendNotificationWithRetry = async (customerId, title, message, orderId, status, maxRetries = 1) => {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    console.log(`🔄 Notification attempt ${attempt}/${maxRetries}`);
-    
-    const result = await sendNotificationToCustomer(customerId, title, message, orderId, status);
-    
-    if (result.success) {
-      return result;
-    }
-    
-    if (attempt < maxRetries) {
-      console.log(`⏳ Retrying in ${attempt * 1000}ms...`);
-      await new Promise(resolve => setTimeout(resolve, attempt * 1000));
-    }
-  }
-  
-  return { success: false, error: "Notification service unavailable" };
 };
 
 /* -------------------------- DELETE MODAL -------------------------- */
@@ -217,71 +81,6 @@ const OrderPage = () => {
 
   const [viewOrder, setViewOrder] = useState(null);
   const [deleteOrder, setDeleteOrder] = useState(null);
-
-  /* -------------------------- SEND NOTIFICATION TO CUSTOMER -------------------------- */
-  const sendNotification = async (order, status) => {
-    const messages = {
-      "Pending": "Your order has been received and is being processed",
-      "Shipped": "Your order has been shipped and is on its way!",
-      "Delivered": "Your order has been delivered successfully!",
-      "Canceled": "Your order has been canceled"
-    };
-
-    const title = `Order ${order.id} Update`;
-    const message = messages[status] || `Your order status has been updated to ${status}`;
-
-    console.log(`📨 Preparing notification for order ${order.id}: ${status}`);
-
-    try {
-      const result = await sendNotificationWithRetry(
-        order.customerId, 
-        title, 
-        message,
-        order.id,
-        status
-      );
-
-      if (result.success) {
-        if (result.method === "database-storage") {
-          return {
-            success: true,
-            message: `✅ Order status updated to ${status}!\n\n📝 Notification has been queued and will be delivered when the service is available.`,
-            method: "queued"
-          };
-        } else {
-          return {
-            success: true,
-            message: `✅ Order status updated to ${status}!\n\n📱 Customer has been notified.`,
-            method: "delivered"
-          };
-        }
-      } else {
-        console.warn("⚠️ Notification failed:", result.error);
-        
-        // Don't show alert for missing tokens - it's expected for some customers
-        if (result.error.includes("No FCM token") || result.error.includes("Customer not found")) {
-          return {
-            success: true,
-            message: `✅ Order status updated to ${status}!\n\nℹ️ Customer doesn't have notification setup.`,
-            method: "no-token"
-          };
-        }
-        
-        return {
-          success: true,
-          message: `✅ Order status updated to ${status}!\n\n⚠️ Notifications are temporarily unavailable due to technical limitations.`,
-          method: "failed"
-        };
-      }
-    } catch (error) {
-      console.error("❌ Unexpected error in sendNotification:", error);
-      return {
-        success: true,
-        message: `✅ Order status updated to ${status}!\n\n⚠️ Notification service unavailable.`,
-        method: "error"
-      };
-    }
-  };
 
   /* -------------------------- FETCH ORDERS -------------------------- */
   const getOrders = useCallback(async () => {
@@ -568,16 +367,6 @@ const OrderPage = () => {
         )
       );
 
-      // Send notification but don't block order acceptance
-      console.log("📢 Sending notification to customer...");
-      sendNotification(order, "Shipped").then(result => {
-        if (result.success) {
-          console.log("✅ Notification process completed:", result.method);
-        }
-      }).catch(error => {
-        console.error("❌ Notification failed:", error);
-      });
-
       // Show success message immediately
       if (outOfStockItems.length > 0) {
         alert(`✅ Order accepted and marked as Shipped!\n\n⚠️ Note: ${outOfStockItems.length} item(s) had insufficient stock and were not deducted from inventory.`);
@@ -690,8 +479,6 @@ const OrderPage = () => {
 
   /* -------------------------- CHANGE STATUS -------------------------- */
   const handleStatusChange = async (docId, customerId, newStatus) => {
-    let updatedOrder = null;
-
     try {
       console.log(`🔄 Changing status for order ${docId} to ${newStatus}`);
       
@@ -713,25 +500,13 @@ const OrderPage = () => {
       setOrders((prev) =>
         prev.map((o) => {
           if (o.docId === docId) {
-            updatedOrder = { ...o, status: newStatus };
-            return updatedOrder;
+            return { ...o, status: newStatus };
           }
           return o;
         })
       );
 
-      if (updatedOrder) {
-        // Send notification but don't block the status update if it fails
-        sendNotification(updatedOrder, newStatus).then(result => {
-          if (result.success) {
-            console.log("Notification result:", result.method);
-          }
-        }).catch(error => {
-          console.error("❌ Notification failed after status change:", error);
-        });
-      }
-
-      // Show success message immediately (don't wait for notification)
+      // Show success message
       alert(`✅ Order status updated to ${newStatus}`);
 
     } catch (error) {
@@ -769,78 +544,6 @@ const OrderPage = () => {
     }
   };
 
-  /* -------------------------- TEST NOTIFICATION SERVICE -------------------------- */
-  const testNotificationService = async () => {
-    console.log("🧪 Testing notification service...");
-    
-    if (orders.length > 0) {
-      const testOrder = orders[0];
-      
-      const result = await sendNotification(testOrder, "Test");
-      
-      if (result.success) {
-        alert(result.message);
-      } else {
-        alert("❌ Notification test failed. This is expected due to CORS restrictions.");
-      }
-    } else {
-      alert("No orders found to test notifications. Please create an order first.");
-    }
-  };
-
-  /* -------------------------- FIX CORS ISSUE -------------------------- */
-  const showCorsFixInstructions = () => {
-    const instructions = `
-🔧 CORS FIX REQUIRED 🔧
-
-The notification service is blocked by CORS policy. To fix this:
-
-OPTION 1: Update Notification Service
-Ask the notification service owner to add CORS headers:
-
-// In their Vercel configuration (vercel.json)
-{
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,DELETE,OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
-      ]
-    }
-  ]
-}
-
-OPTION 2: Use Firebase Cloud Functions
-Create a proxy function that calls the notification service.
-
-OPTION 3: Server-Side Integration
-Call the notification service from your backend instead of frontend.
-
-📝 Current Status:
-• Orders process successfully ✅
-• Notifications are queued in database ✅
-• Real-time notifications require CORS fix ❌
-    `;
-    
-    alert(instructions);
-  };
-
-  /* -------------------------- VIEW PENDING NOTIFICATIONS -------------------------- */
-  const viewPendingNotifications = async () => {
-    try {
-      const notificationsRef = collection(db, "pending_notifications");
-      const snapshot = await getDocs(notificationsRef);
-      const pendingCount = snapshot.size;
-      
-      alert(`📋 Pending Notifications: ${pendingCount}\n\nNotifications are stored in the 'pending_notifications' collection and will be processed when the CORS issue is resolved.`);
-    } catch (error) {
-      console.error("Error fetching pending notifications:", error);
-      alert("Error loading pending notifications count.");
-    }
-  };
-
   /* -------------------------- SEARCH FILTER -------------------------- */
   const filteredOrders = orders.filter((o) =>
     (o.id + o.customer + o.status)
@@ -870,34 +573,6 @@ Call the notification service from your backend instead of frontend.
       <div className="container-fluid p-4" style={{ paddingTop: 90 }}>
         <div className="d-flex justify-content-between align-items-center mb-4">
           <h2 className="fw-bold text-primary mb-0">Order Management</h2>
-          <div>
-            <button 
-              className="btn btn-warning btn-sm me-2" 
-              onClick={showCorsFixInstructions}
-              title="CORS Fix Instructions"
-            >
-              🔧 Fix CORS
-            </button>
-            <button 
-              className="btn btn-secondary btn-sm me-2" 
-              onClick={viewPendingNotifications}
-              title="View Pending Notifications"
-            >
-              📋 View Queued
-            </button>
-            <button 
-              className="btn btn-info btn-sm" 
-              onClick={testNotificationService}
-              title="Test Notification Service"
-            >
-              🧪 Test Notifications
-            </button>
-          </div>
-        </div>
-
-        {/* CORS Warning Banner */}
-        <div className="alert alert-warning mb-4">
-          <strong>⚠️ Notification Service Notice:</strong> Real-time notifications are currently queued due to CORS restrictions. Orders will process successfully, but notifications require server-side fixes for real-time delivery.
         </div>
 
         {/* Order Stats */}
