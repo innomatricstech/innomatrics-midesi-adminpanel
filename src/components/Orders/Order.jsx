@@ -110,20 +110,34 @@ const OrderPage = () => {
         return orderSnap.docs.map((o) => {
           const data = o.data();
 
-          return {
-            ...data,
-            id: data.orderId || o.id,
-            docId: o.id,
-            customerId,
-            customer: customer.name || "N/A",
-            date:
-              data.createdAt?.toDate().toLocaleDateString() ||
-              data.date ||
-              "N/A",
-            total: (data.totalAmount || data.total || 0).toFixed(2),
-            items: data.products?.length || 0,
-            status: data.status || "Pending",
-          };
+        return {
+  ...data,
+  id: data.orderId || o.id,
+  docId: o.id,
+  customerId,
+
+  // 👤 CUSTOMER INFO
+  customer: customer.name || "N/A",
+  phone: data.phoneNumber ? String(data.phoneNumber) : "N/A",
+
+
+  // 💳 UTR
+  utr:
+    data.transactionId ||
+    data.transactionData?.transactionId ||
+    "N/A",
+
+  date:
+    data.createdAt?.toDate().toLocaleDateString() ||
+    data.date ||
+    "N/A",
+
+  total: (data.totalAmount || data.total || 0).toFixed(2),
+  items: data.products?.length || 0,
+  status: data.status || "Pending",
+};
+
+
         });
       });
 
@@ -621,6 +635,8 @@ const OrderPage = () => {
                 <tr>
                   <th>Order ID</th>
                   <th>Customer</th>
+                  <th>Phone</th>
+<th>UTR</th>
                   <th>Date</th>
                   <th>Items</th>
                   <th>Total</th>
@@ -634,6 +650,14 @@ const OrderPage = () => {
                   <tr key={order.docId}>
                     <td className="fw-bold text-primary">{order.id}</td>
                     <td>{order.customer}</td>
+                  
+<td className="fw-bold text-secondary">{order.phone}</td>
+<td>
+  <code className="bg-light px-2 py-1">
+    {order.utr}
+  </code>
+</td>
+
                     <td>{order.date}</td>
                     <td>
                       <span className="badge bg-secondary">{order.items} items</span>

@@ -61,10 +61,13 @@ function App() {
   
   const handleShowLogout = () => setShowLogoutConfirm(true);
   const handleCancelLogout = () => setShowLogoutConfirm(false);
+  
 
   const renderContent = () => {
     if (currentView === 'Products') return <ProductList />;
-    if (currentView === 'Dashboard') return <Dashboard />;
+    if (currentView === 'Dashboard')
+  return <Dashboard onNavigate={setCurrentView} />;
+
     if (currentView === 'Orders') return <OrderPage />;
     if (currentView === 'Category') return <CategoryList />;
     if (currentView === 'Brands') return <BrandList />;
@@ -78,7 +81,9 @@ function App() {
     if (currentView === 'Recharge Plan') return <RechargePlans />;
     if (currentView === 'Partner Management') return <PartnerManagement />;
     if (currentView === 'Customer Details') return <CustomerDetails />;
+    
   };
+  
 
   // --- CONDITIONAL RENDERING ---
 

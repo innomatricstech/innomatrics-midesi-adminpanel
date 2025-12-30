@@ -1,41 +1,54 @@
 import React, { useEffect, useState, useCallback } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import * as XLSX from "xlsx";
-import { db } from "../../firebase"; // ✅ adjust your path
-import { collection, getDocs } from "firebase/firestore";
+import { db } from "../../firebase";
+import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
 
 const RechargeRequestList = () => {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState(null);
 
-  // -------------------------------------------------------------------
-  // ⚡ FAST FETCHING USING PROMISE.ALL
-  // -------------------------------------------------------------------
   const fetchRechargeRequests = useCallback(async () => {
     setLoading(true);
     try {
+      // 1. Fetch all customers first
       const customersSnap = await getDocs(collection(db, "customers"));
+      
+      // 2. Map customer IDs to their names/referrer IDs for quick lookup
+      const customerLookup = {};
+      customersSnap.docs.forEach(d => {
+        const data = d.data();
+        customerLookup[d.id] = {
+          name: data.name || data.fullName || "Unnamed",
+          referredBy: data.referredBy || "Direct"
+        };
+      });
 
-      // Fetch recharge requests for all customers in parallel
-      const allReqPromises = customersSnap.docs.map(async (customer) => {
-        const userId = customer.id;
+      // 3. Fetch recharge requests using parallel promises
+      const allReqPromises = customersSnap.docs.map(async (customerDoc) => {
+        const userId = customerDoc.id;
         const reqSnap = await getDocs(
           collection(db, `customers/${userId}/rechargeRequest`)
         );
-        return reqSnap.docs.map((doc) => ({
-          id: doc.id,
-          userId,
-          ...doc.data(),
-        }));
+        
+        return reqSnap.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            userId,
+            userName: customerLookup[userId].name, // Get name from lookup
+            referredBy: customerLookup[userId].referredBy, // Get referrer from lookup
+            ...data,
+            displayUtr: data.transactionId || data.utrId || "N/A", 
+          };
+        });
       });
 
-      // Wait for all user subcollections together
       const nestedResults = await Promise.all(allReqPromises);
-
-      // Flatten results into one array
       const allRequests = nestedResults.flat();
 
-      // Sort by date (latest first)
+      // Sort by Date
       const sorted = allRequests.sort((a, b) => {
         const dateA = a.requestedDate?.toDate?.() || 0;
         const dateB = b.requestedDate?.toDate?.() || 0;
@@ -44,7 +57,7 @@ const RechargeRequestList = () => {
 
       setRequests(sorted);
     } catch (error) {
-      console.error("🔥 Error fetching recharge requests:", error);
+      console.error("🔥 Error:", error);
     } finally {
       setLoading(false);
     }
@@ -54,138 +67,80 @@ const RechargeRequestList = () => {
     fetchRechargeRequests();
   }, [fetchRechargeRequests]);
 
-  // -------------------------------------------------------------------
-  // 🧾 EXCEL EXPORT
-  // -------------------------------------------------------------------
+  // Excel Export with Referred By
   const handleDownloadExcel = () => {
-    if (!requests.length) {
-      alert("No recharge requests to export!");
-      return;
-    }
-
-    const data = requests.map((r) => ({
+    const excelData = requests.map((r) => ({
+      "User Name": r.userName,
       "User ID": r.userId,
-      "Recharge ID": r.id,
-      "Mobile Number": r.number || "N/A",
-      "Plan Provider": r.plan?.rechargeProvider || "N/A",
-      "Plan Price": r.plan?.price ? `₹${r.plan.price}` : "N/A",
-      Status: r.rechargeStatus || "Pending",
-      "Requested Date": r.requestedDate?.toDate
-        ? r.requestedDate.toDate().toLocaleString()
-        : "N/A",
+      "Referred By": r.referredBy,
+      "UTR ID": r.displayUtr,
+      "Mobile": r.number || "N/A",
+      "Status": r.rechargeStatus || "Pending",
+      "Date": r.requestedDate?.toDate ? r.requestedDate.toDate().toLocaleString() : "N/A",
     }));
 
-    const worksheet = XLSX.utils.json_to_sheet(data);
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Recharge Requests");
-    XLSX.writeFile(workbook, "RechargeRequests.xlsx");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Recharge Report");
+    XLSX.writeFile(workbook, "Recharge_Requests.xlsx");
   };
 
-  // -------------------------------------------------------------------
-  // 🎨 UI
-  // -------------------------------------------------------------------
   return (
-    <div
-      style={{
-        backgroundColor: "#f8fafc",
-        minHeight: "100vh",
-        paddingTop: "80px",
-      }}
-    >
+    <div style={{ backgroundColor: "#f4f7f6", minHeight: "100vh", paddingTop: "80px" }}>
       <div className="container-fluid px-4">
-        {/* HEADER BAR */}
-        <div
-          className="d-flex justify-content-between align-items-center py-3 px-3 rounded-3 shadow-sm"
-          style={{
-            backgroundColor: "#ffffff",
-            border: "1px solid #e5e7eb",
-          }}
-        >
-          <h3
-            className="fw-bold m-0"
-            style={{
-              color: "#007bff",
-            }}
-          >
-            Recharge Management
-          </h3>
-
-          <button
-            onClick={handleDownloadExcel}
-            className="btn d-flex align-items-center gap-2 text-white fw-semibold rounded-pill px-3 py-2"
-            style={{
-              backgroundColor: "#038631ff",
-              border: "none",
-              boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-            }}
-          >
-            <i className="bi bi-file-earmark-excel"></i>
-            Download Excel
+        {/* Header Section */}
+        <div className="d-flex justify-content-between align-items-center py-3 px-4 rounded-3 shadow-sm bg-white border mb-4">
+          <h4 className="fw-bold m-0 text-primary">Recharge Management</h4>
+          <button onClick={handleDownloadExcel} className="btn btn-success rounded-pill px-4">
+             📥 Export Excel
           </button>
         </div>
 
-        {/* TABLE CARD */}
-        <div className="card shadow-sm mt-4 border-0 rounded-4">
-          <div className="card-body p-0">
-            {loading ? (
-              <div className="text-center py-5">
-                <div className="spinner-border text-primary"></div>
-                <p className="text-muted mt-3">Loading recharge requests...</p>
-              </div>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-hover table-striped align-middle mb-0">
-                  <thead className="table-light">
-                    <tr>
-                      <th>User ID</th>
-                      <th>Recharge ID</th>
-                      <th>Number</th>
-                      <th>Provider</th>
-                      <th>Price</th>
-                      <th>Status</th>
-                      <th>Date</th>
+        {/* Table Section */}
+        <div className="card shadow-sm border-0 rounded-4 overflow-hidden">
+          <div className="table-responsive">
+            <table className="table table-hover align-middle mb-0">
+              <thead className="bg-light">
+                <tr className="small text-uppercase text-muted">
+                  <th className="ps-4">User & Referrer</th>
+                  <th>UTR / Transaction ID</th>
+                  <th>Mobile</th>
+                  <th>Plan</th>
+                  <th>Status Update</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan="5" className="text-center py-5">Loading...</td></tr>
+                ) : (
+                  requests.map((r) => (
+                    <tr key={r.id}>
+                      <td className="ps-4">
+                        <div className="fw-bold text-dark">{r.userName}</div>
+                        <div className="text-muted small" style={{ fontSize: '11px' }}>
+                          ID: {r.userId} | <span className="text-primary">Ref: {r.referredBy}</span>
+                        </div>
+                      </td>
+                      <td><code className="small bg-light px-2 py-1">{r.displayUtr}</code></td>
+                      <td className="fw-bold text-secondary">{r.number}</td>
+                      <td>₹{r.plan?.price}</td>
+                      <td>
+                        <select
+                          className="form-select form-select-sm fw-bold"
+                          value={r.rechargeStatus}
+                          onChange={(e) => handleStatusChange(r.userId, r.id, e.target.value)}
+                          style={{ borderLeft: r.rechargeStatus === "Success" ? "4px solid green" : "4px solid orange" }}
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="Success">Success</option>
+                          <option value="Failed">Failed</option>
+                        </select>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {requests.length > 0 ? (
-                      requests.map((r) => (
-                        <tr key={r.id}>
-                          <td>{r.userId}</td>
-                          <td>{r.id}</td>
-                          <td>{r.number || "N/A"}</td>
-                          <td>{r.plan?.rechargeProvider || "N/A"}</td>
-                          <td>₹{r.plan?.price || "N/A"}</td>
-                          <td>
-                            <span
-                              className={`badge ${
-                                r.rechargeStatus === "Success"
-                                  ? "bg-success"
-                                  : r.rechargeStatus === "Failed"
-                                  ? "bg-danger"
-                                  : "bg-warning text-dark"
-                              }`}
-                            >
-                              {r.rechargeStatus || "Pending"}
-                            </span>
-                          </td>
-                          <td>
-                            {r.requestedDate?.toDate
-                              ? r.requestedDate.toDate().toLocaleString()
-                              : "N/A"}
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan="7" className="text-center py-4 text-muted">
-                          No recharge requests found.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
