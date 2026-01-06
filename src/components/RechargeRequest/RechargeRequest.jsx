@@ -67,6 +67,36 @@ const RechargeRequestList = () => {
     fetchRechargeRequests();
   }, [fetchRechargeRequests]);
 
+  // Function to handle status change
+  const handleStatusChange = async (userId, requestId, newStatus) => {
+    try {
+      setUpdatingId(requestId);
+      
+      // Update in Firebase
+      const requestRef = doc(db, `customers/${userId}/rechargeRequest`, requestId);
+      await updateDoc(requestRef, {
+        rechargeStatus: newStatus
+      });
+      
+      // Update local state
+      setRequests(prevRequests =>
+        prevRequests.map(request => {
+          if (request.id === requestId && request.userId === userId) {
+            return { ...request, rechargeStatus: newStatus };
+          }
+          return request;
+        })
+      );
+      
+      console.log(`Status updated to ${newStatus} for request ${requestId}`);
+    } catch (error) {
+      console.error("Error updating status:", error);
+      alert("Failed to update status. Please try again.");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   // Excel Export with Referred By
   const handleDownloadExcel = () => {
     const excelData = requests.map((r) => ({
@@ -114,7 +144,7 @@ const RechargeRequestList = () => {
                   <tr><td colSpan="5" className="text-center py-5">Loading...</td></tr>
                 ) : (
                   requests.map((r) => (
-                    <tr key={r.id}>
+                    <tr key={`${r.userId}-${r.id}`}>
                       <td className="ps-4">
                         <div className="fw-bold text-dark">{r.userName}</div>
                         <div className="text-muted small" style={{ fontSize: '11px' }}>
@@ -127,14 +157,27 @@ const RechargeRequestList = () => {
                       <td>
                         <select
                           className="form-select form-select-sm fw-bold"
-                          value={r.rechargeStatus}
+                          value={r.rechargeStatus || "Pending"}
                           onChange={(e) => handleStatusChange(r.userId, r.id, e.target.value)}
-                          style={{ borderLeft: r.rechargeStatus === "Success" ? "4px solid green" : "4px solid orange" }}
+                          disabled={updatingId === r.id}
+                          style={{
+                            borderLeft: r.rechargeStatus === "Success" 
+                              ? "4px solid green" 
+                              : r.rechargeStatus === "Failed" 
+                                ? "4px solid red" 
+                                : "4px solid orange"
+                          }}
                         >
                           <option value="Pending">Pending</option>
                           <option value="Success">Success</option>
                           <option value="Failed">Failed</option>
                         </select>
+                        {updatingId === r.id && (
+                          <div className="text-muted small mt-1">
+                            <span className="spinner-border spinner-border-sm me-1"></span>
+                            Updating...
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))
