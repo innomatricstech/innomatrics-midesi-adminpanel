@@ -10,7 +10,8 @@ import BannerList from "./components/Banners/BannerList"
 import VideoList from './components/Youtubevideo';
 import WalletList from './components/Wallets';
 import ReferralList from './components/Referal';
-import RechargeRequest from './components/RechargeRequest/RechargeRequest';
+
+import RechargeRequestRouter from './components/RechargeRequest/RechargeRequestRouter.jsx';
 import RechargeProviders from './components/RechargeProvider';
 import RechargePlans from './components/RechargePlan';
 import PartnerManagement from './components/PartnerManagement';
@@ -78,7 +79,7 @@ function App() {
     if (currentView === 'Stock Notifier') return <StockNotifier/>
     if (currentView === 'Wallet') return <WalletList />;
     if (currentView === 'Referral') return <ReferralList />;
-    if (currentView === 'Recharge Request') return <RechargeRequest />;
+    if (currentView === 'Recharge Request') return <RechargeRequestRouter />;
     if (currentView === 'Recharge Provider') return <RechargeProviders />;
     if (currentView === 'Recharge Plan') return <RechargePlans />;
     if (currentView === 'Partner Management') return <PartnerManagement />;
