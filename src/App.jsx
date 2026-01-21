@@ -17,6 +17,7 @@ import PartnerManagement from './components/PartnerManagement';
 import CustomerDetails from './components/Customer/Customer';
 import StockNotifier from './components/StockNotifier.jsx';
 // --- NEW IMPORTS ---
+import DashboardRouter from './components/DashboardRouter.jsx';
 import LoginPage from './components/Auth/LoginPage';
 import LogoutConfirmation from './components/Auth/LogoutConfirmation.jsx'; // <-- NEW IMPORT
 // ⚠️ Adjust path to your Firebase config file
@@ -66,7 +67,8 @@ function App() {
   const renderContent = () => {
     if (currentView === 'Products') return <ProductList />;
     if (currentView === 'Dashboard')
-  return <Dashboard onNavigate={setCurrentView} />;
+  return <DashboardRouter
+ onNavigate={setCurrentView} />;
 
     if (currentView === 'Orders') return <OrderPage />;
     if (currentView === 'Category') return <CategoryList />;

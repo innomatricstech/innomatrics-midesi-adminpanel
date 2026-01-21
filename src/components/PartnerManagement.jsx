@@ -11,6 +11,10 @@ import {
   doc,
   serverTimestamp,
 } from "../firebase";
+import { setDoc } from "firebase/firestore";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../firebase";
+
 
 const PartnerManagement = () => {
   const [partners, setPartners] = useState([]);
@@ -29,13 +33,19 @@ const PartnerManagement = () => {
   const [deletePartner, setDeletePartner] = useState(null);
   const [viewPartner, setViewPartner] = useState(null);
 
-  const [newPartner, setNewPartner] = useState({
-    name: "",
-    email: "",
-    mobileNumber: "",
-    status: "Active",
-    fcmToken: "",
-  });
+
+const [newPartner, setNewPartner] = useState({
+  name: "",
+  email: "",
+  password: "",
+  mobileNumber: "",
+  role: "employee",
+  status: "Active",
+  fcmToken: "",
+});
+
+const [showPassword, setShowPassword] = useState(false);
+
 
   // 🔹 Search handler
   const handleSearchChange = useCallback((value) => {
@@ -70,31 +80,59 @@ const PartnerManagement = () => {
     return () => unsubscribe();
   }, []);
 
-  // 🔹 Add Partner (existing code...)
-  const handleAddSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      await addDoc(collection(db, "partners"), {
-        name: newPartner.name,
-        email: newPartner.email,
-        mobileNumber: newPartner.mobileNumber,
-        status: newPartner.status,
-        fcmToken: newPartner.fcmToken || "", // ✅ don’t auto-generate
-        joinedAt: serverTimestamp(),
-      });
-      setNewPartner({
-        name: "",
-        email: "",
-        mobileNumber: "",
-        status: "Active",
-        fcmToken: "",
-      });
-      setShowAddModal(false);
-    } catch (err) {
-      console.error("Error adding partner:", err);
-      alert("Failed to add partner.");
+ const handleAddSubmit = async (e) => {
+  e.preventDefault();
+
+  try {
+    // 1️⃣ Create Firebase Auth user
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      newPartner.email,
+      newPartner.password
+    );
+
+    const uid = userCredential.user.uid;
+
+
+await setDoc(doc(db, "partners", uid), {
+  uid, // optional, but ok to keep
+  name: newPartner.name,
+  email: newPartner.email,
+  mobileNumber: newPartner.mobileNumber,
+  role: "employee",
+  status: newPartner.status,
+  fcmToken: "",
+  joinedAt: serverTimestamp(),
+});
+
+    // 3️⃣ Reset form
+    setNewPartner({
+      name: "",
+      email: "",
+      password: "",
+      mobileNumber: "",
+      role: "employee",
+      status: "Active",
+      fcmToken: "",
+    });
+
+    setShowAddModal(false);
+    alert("Employee created successfully!");
+
+  } catch (err) {
+    console.error("Error creating partner:", err);
+
+    let message = "Failed to create employee";
+    if (err.code === "auth/email-already-in-use") {
+      message = "Email already exists";
+    } else if (err.code === "auth/weak-password") {
+      message = "Password must be at least 6 characters";
     }
-  };
+
+    alert(message);
+  }
+};
+
 
   // 🔹 Edit Partner (existing code...)
   const handleEditSubmit = async (e) => {
@@ -284,6 +322,7 @@ const PartnerManagement = () => {
                     Name {getSortIndicator("name")}
                   </th>
                   <th>Email</th>
+                  
                   <th onClick={() => requestSort("status")} style={{ cursor: "pointer" }}>
                     Status {getSortIndicator("status")}
                   </th>
@@ -448,75 +487,131 @@ const PartnerManagement = () => {
         </div>
       )}
 
-      {/* Add Partner Modal */}
-      {showAddModal && (
-        <div className="modal show d-block" tabIndex="-1">
-          <div className="modal-dialog">
-            <div className="modal-content rounded-4 shadow-lg">
-              <form onSubmit={handleAddSubmit}>
-                <div className="modal-header">
-                  <h5 className="modal-title">Add Partner</h5>
-                  <button
-                    type="button"
-                    className="btn-close"
-                    onClick={() => setShowAddModal(false)}
-                  ></button>
-                </div>
-                <div className="modal-body">
-                  <input
-                    type="text"
-                    className="form-control mb-3"
-                    placeholder="Name"
-                    value={newPartner.name}
-                    onChange={(e) => setNewPartner({ ...newPartner, name: e.target.value })}
-                    required
-                  />
-                  <input
-                    type="email"
-                    className="form-control mb-3"
-                    placeholder="Email"
-                    value={newPartner.email}
-                    onChange={(e) => setNewPartner({ ...newPartner, email: e.target.value })}
-                    required
-                  />
-                  <input
-                    type="text"
-                    className="form-control mb-3"
-                    placeholder="Mobile Number"
-                    value={newPartner.mobileNumber}
-                    onChange={(e) =>
-                      setNewPartner({ ...newPartner, mobileNumber: e.target.value })
-                    }
-                    required
-                  />
-                  <select
-                    className="form-select mb-3"
-                    value={newPartner.status}
-                    onChange={(e) => setNewPartner({ ...newPartner, status: e.target.value })}
-                  >
-                    <option>Active</option>
-                    <option>Inactive</option>
-                    <option>Pending</option>
-                  </select>
+{/* Add Partner Modal */}
+{showAddModal && (
+  <div className="modal fade show d-block" tabIndex="-1" style={{ background: "rgba(0,0,0,0.5)" }}>
+    <div className="modal-dialog modal-dialog-centered">
+      <div className="modal-content rounded-4 shadow-lg border-0">
 
-                </div>
-                <div className="modal-footer">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setShowAddModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn btn-primary">
-                    Save Partner
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
+        {/* Header */}
+        <div className="modal-header bg-gradient-primary text-white rounded-top-4">
+          <h5 className="modal-title fw-bold">➕ Add New Partner</h5>
+          <button
+            type="button"
+            className="btn-close btn-close-white"
+            onClick={() => setShowAddModal(false)}
+          />
         </div>
-      )}
+
+        <form onSubmit={handleAddSubmit}>
+          <div className="modal-body px-4 py-4">
+
+            {/* Name */}
+            <div className="form-floating mb-3">
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Name"
+                value={newPartner.name}
+                onChange={(e) => setNewPartner({ ...newPartner, name: e.target.value })}
+                required
+              />
+              <label>Full Name</label>
+            </div>
+
+            {/* Email */}
+            <div className="form-floating mb-3">
+              <input
+                type="email"
+                className="form-control"
+                placeholder="Email"
+                value={newPartner.email}
+                onChange={(e) => setNewPartner({ ...newPartner, email: e.target.value })}
+                required
+              />
+              <label>Email Address</label>
+            </div>
+
+            {/* Password */}
+            <label className="form-label fw-semibold">Password</label>
+            <div className="input-group mb-3">
+              <input
+                type={showPassword ? "text" : "password"}
+                className="form-control"
+                placeholder="Enter password"
+                value={newPartner.password}
+                onChange={(e) =>
+                  setNewPartner({ ...newPartner, password: e.target.value })
+                }
+                required
+              />
+              <button
+                className="btn btn-outline-secondary"
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? "🙈" : "👁️"}
+              </button>
+            </div>
+            <small className="text-muted mb-3 d-block">
+              Minimum 6 characters
+            </small>
+
+            {/* Mobile */}
+            <div className="form-floating mb-3">
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Mobile Number"
+                value={newPartner.mobileNumber}
+                onChange={(e) =>
+                  setNewPartner({ ...newPartner, mobileNumber: e.target.value })
+                }
+                required
+              />
+              <label>Mobile Number</label>
+            </div>
+
+            {/* Status */}
+            <div className="mb-3">
+              <label className="form-label fw-semibold">Account Status</label>
+              <select
+                className="form-select"
+                value={newPartner.status}
+                onChange={(e) =>
+                  setNewPartner({ ...newPartner, status: e.target.value })
+                }
+              >
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+                <option value="Pending">Pending</option>
+              </select>
+            </div>
+
+          </div>
+
+          {/* Footer */}
+          <div className="modal-footer border-0 px-4 pb-4">
+            <button
+              type="button"
+              className="btn btn-light rounded-pill px-4"
+              onClick={() => setShowAddModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-gradient-primary rounded-pill px-4"
+            >
+              Save Partner
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+)}
+
 
       {/* Edit Partner Modal */}
       {editPartner && (

@@ -1,112 +1,133 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
-import "../styles/fixedheader.css"
-import { db, collection, getDocs } from "../firebase";
+import "../styles/fixedheader.css";
+
+import { db } from "../firebase";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { useAuth } from "./Auth/authContext";
 
 const FixedHeader = ({ onSearchChange }) => {
-  const [adminData, setAdminData] = useState(null);
+  const { user } = useAuth();
+  const [userData, setUserData] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
 
+  /* --------------------------------------------------
+     FETCH NAME BASED ON ROLE (ADMIN / EMPLOYEE)
+  -------------------------------------------------- */
   useEffect(() => {
-    const fetchAdminData = async () => {
-      try {
-        const querySnapshot = await getDocs(collection(db, "admins"));
-        const admins = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        console.log("✅ Admins fetched:", admins);
+    if (!user?.uid) return;
 
-        if (admins.length > 0) {
-          setAdminData(admins[0]); // pick first admin for now
-        } else {
-          console.warn("⚠️ No admin documents found!");
+    const fetchUserDetails = async () => {
+      try {
+        // 🔍 Admin
+        const adminQuery = query(
+          collection(db, "admins"),
+          where("uid", "==", user.uid)
+        );
+        const adminSnap = await getDocs(adminQuery);
+
+        if (!adminSnap.empty) {
+          setUserData({ role: "admin", ...adminSnap.docs[0].data() });
+          return;
+        }
+
+        // 🔍 Employee
+        const partnerQuery = query(
+          collection(db, "partners"),
+          where("uid", "==", user.uid)
+        );
+        const partnerSnap = await getDocs(partnerQuery);
+
+        if (!partnerSnap.empty) {
+          setUserData({ role: "employee", ...partnerSnap.docs[0].data() });
         }
       } catch (error) {
-        console.error("❌ Error fetching admin data:", error);
+        console.error("❌ Error fetching user data:", error);
       }
     };
 
-    fetchAdminData();
-  }, []);
+    fetchUserDetails();
+  }, [user]);
 
-  const handleSearchInput = (event) => {
-    if (onSearchChange) onSearchChange(event.target.value.toLowerCase());
-  };
-
+  /* --------------------------------------------------
+     HELPERS
+  -------------------------------------------------- */
   const toggleDetails = () => setShowDetails((prev) => !prev);
 
-  // 🧩 Use correct fallbacks
-  const displayName = adminData?.name || "No Name";
-  const displayEmail = adminData?.email || "No Email";
-  const displayUid = adminData?.uid || adminData?.id || "No UID";
-  const userPhoto =
-    adminData?.photoURL && adminData.photoURL !== "null"
-      ? adminData.photoURL
-      : "https://static.vecteezy.com/system/resources/previews/024/183/502/non_2x/male-avatar-portrait-of-a-young-man-with-a-beard-illustration-of-male-character-in-modern-color-style-vector.jpg";
+  const handleSearchInput = (e) => {
+    if (onSearchChange) onSearchChange(e.target.value.toLowerCase());
+  };
 
+  const displayName = userData?.name || "User";
+  const displayEmail = userData?.email || user?.email || "N/A";
+  const displayRole = userData?.role || "user";
+  const initial = displayName.charAt(0).toUpperCase();
+
+  /* --------------------------------------------------
+     UI
+  -------------------------------------------------- */
   return (
     <header className="fixed-header shadow-sm bg-white">
-      <div className="container-fluid d-flex justify-content-between align-items-center py-2 px-2">
-        {/* 🔍 Search Bar */}
-        <div
-          className="header-search position-relative flex-grow-1 mx-3"
-          style={{ maxWidth: "600px" }}
-        >
+      <div className="container-fluid d-flex justify-content-between align-items-center py-2 px-3">
+
+        {/* 🔍 SEARCH WITH ICON */}
+        <div className="flex-grow-1 mx-3 position-relative" style={{ maxWidth: 600 }}>
           <span
-            className="position-absolute start-0 top-50 translate-middle-y ms-3 text-muted fs-5"
+            className="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"
             style={{ pointerEvents: "none" }}
           >
             🔍
           </span>
+
           <input
             type="search"
-            className="form-control ps-5 py-2 rounded-pill header-search-input"
+            className="form-control rounded-pill ps-5"
             placeholder="Search anything..."
             onChange={handleSearchInput}
           />
         </div>
 
-        {/* 👤 Profile Section */}
+        {/* 👤 PROFILE */}
         <div className="position-relative">
-          <img
-            src={userPhoto}
-            alt={displayName}
-            className="rounded-circle border border-2 border-primary shadow-sm"
-            width="42"
-            height="42"
-            style={{ objectFit: "cover", cursor: "pointer" }}
+          {/* INITIAL AVATAR */}
+          <div
             onClick={toggleDetails}
-          />
+            className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white"
+            style={{
+              width: 42,
+              height: 42,
+              cursor: "pointer",
+              fontSize: 18,
+              background:
+                displayRole === "admin"
+                  ? "linear-gradient(135deg, #ef4444, #dc2626)"
+                  : "linear-gradient(135deg, #6366f1, #4f46e5)",
+              userSelect: "none",
+            }}
+          >
+            {initial}
+          </div>
 
-          {/* Dropdown Card */}
+          {/* DROPDOWN */}
           {showDetails && (
             <div
-              className="position-absolute end-0 mt-2 bg-white border rounded-4 shadow-lg p-3"
-              style={{
-                width: "260px",
-                zIndex: 1050,
-                animation: "fadeIn 0.2s ease-in-out",
-              }}
+              className="position-absolute end-0 mt-2 bg-white border rounded-4 shadow p-3"
+              style={{ width: 240, zIndex: 1050 }}
             >
-              <div className="d-flex flex-column text-start">
-                <p className="fw-semibold mb-1 text-capitalize">{displayName}</p>
-                <p className="text-muted small mb-1">{displayEmail}</p>
-                <p className="text-muted small mb-0 text-break" style={{ fontSize: "0.8rem" }}>
-                  <strong>User ID:</strong> {displayUid}
-                </p>
-              </div>
+              <p className="fw-bold mb-1 text-capitalize">{displayName}</p>
+              <p className="text-muted small mb-2">{displayEmail}</p>
+
+              <span
+                className={`badge ${
+                  displayRole === "admin" ? "bg-danger" : "bg-primary"
+                }`}
+              >
+                {displayRole}
+              </span>
             </div>
           )}
         </div>
       </div>
-
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-5px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </header>
   );
 };

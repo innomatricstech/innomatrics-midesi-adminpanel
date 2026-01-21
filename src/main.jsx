@@ -1,14 +1,21 @@
 // src/main.jsx
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App.jsx';
-// Import Bootstrap CSS
-import 'bootstrap/dist/css/bootstrap.min.css'; 
-// // Import custom styles for color matching
-// import './custom-styles.css'; 
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import App from "./App.jsx";
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+// Bootstrap CSS
+import "bootstrap/dist/css/bootstrap.min.css";
+
+// Auth Provider
+import { AuthProvider } from "./components/Auth/authContext.jsx";
+
+ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
-  </React.StrictMode>,
+    <BrowserRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </BrowserRouter>
+  </React.StrictMode>
 );

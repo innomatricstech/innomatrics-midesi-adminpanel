@@ -1,194 +1,502 @@
-import React, { useEffect, useState, useCallback } from "react";
-import "bootstrap/dist/css/bootstrap.min.css";
-import * as XLSX from "xlsx";
-import { db } from "../../firebase";
-import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
+  import React, { useEffect, useState, useCallback } from "react";
+  import "bootstrap/dist/css/bootstrap.min.css";
+  import * as XLSX from "xlsx";
+  import { db } from "../../firebase";
+  import FixedHeader from "../FixedHeader";
+  import {
+    collection,
+    getDocs,
+    doc,
+    updateDoc,
+  } from "firebase/firestore";
 
-const RechargeRequestList = () => {
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [updatingId, setUpdatingId] = useState(null);
+  const RechargeRequestList = () => {
+    const [requests, setRequests] = useState([]);
+    const [partners, setPartners] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [updatingId, setUpdatingId] = useState(null);
+    const [fromDate, setFromDate] = useState("");
+const [toDate, setToDate] = useState("");
+const [searchTerm, setSearchTerm] = useState("");
+const [rejectModal, setRejectModal] = useState(null);
+const [rejectReason, setRejectReason] = useState("");
 
-  const fetchRechargeRequests = useCallback(async () => {
-    setLoading(true);
-    try {
-      // 1. Fetch all customers first
-      const customersSnap = await getDocs(collection(db, "customers"));
-      
-      // 2. Map customer IDs to their names/referrer IDs for quick lookup
-      const customerLookup = {};
-      customersSnap.docs.forEach(d => {
-        const data = d.data();
-        customerLookup[d.id] = {
-          name: data.name || data.fullName || "Unnamed",
-          referredBy: data.referredBy || "Direct"
-        };
-      });
 
-      // 3. Fetch recharge requests using parallel promises
-      const allReqPromises = customersSnap.docs.map(async (customerDoc) => {
-        const userId = customerDoc.id;
-        const reqSnap = await getDocs(
-          collection(db, `customers/${userId}/rechargeRequest`)
-        );
-        
-        return reqSnap.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            userId,
-            userName: customerLookup[userId].name, // Get name from lookup
-            referredBy: customerLookup[userId].referredBy, // Get referrer from lookup
-            ...data,
-            displayUtr: data.transactionId || data.utrId || "N/A", 
+
+
+
+
+    /* =========================
+      FETCH PARTNERS
+    ========================= */
+
+    
+    useEffect(() => {
+      const fetchPartners = async () => {
+        try {
+          const snap = await getDocs(collection(db, "partners"));
+          const list = snap.docs.map((d) => ({
+            id: d.id,
+            name: d.data().name || d.data().partnerName || "Unnamed Partner",
+          }));
+          setPartners(list);
+        } catch (err) {
+          console.error("Error fetching partners:", err);
+        }
+      };
+
+      fetchPartners();
+    }, []);
+
+    /* =========================
+      FETCH RECHARGE REQUESTS
+    ========================= */
+    const fetchRechargeRequests = useCallback(async () => {
+      setLoading(true);
+      try {
+        // 1. Fetch customers
+        const customersSnap = await getDocs(collection(db, "customers"));
+
+        // 2. Customer lookup
+        const customerLookup = {};
+        customersSnap.docs.forEach((d) => {
+          const data = d.data();
+          customerLookup[d.id] = {
+            name: data.name || data.fullName || "Unnamed",
+            referredBy: data.referredBy || "Direct",
           };
         });
-      });
 
-      const nestedResults = await Promise.all(allReqPromises);
-      const allRequests = nestedResults.flat();
+        // 3. Fetch recharge requests for each customer
+        const allReqPromises = customersSnap.docs.map(async (customerDoc) => {
+          const userId = customerDoc.id;
+          const reqSnap = await getDocs(
+            collection(db, `customers/${userId}/rechargeRequest`)
+          );
 
-      // Sort by Date
-      const sorted = allRequests.sort((a, b) => {
-        const dateA = a.requestedDate?.toDate?.() || 0;
-        const dateB = b.requestedDate?.toDate?.() || 0;
-        return dateB - dateA;
-      });
+          return reqSnap.docs.map((reqDoc) => {
+            const data = reqDoc.data();
+            return {
+              id: reqDoc.id,
+              userId,
+              userName: customerLookup[userId]?.name || "Unknown",
+              referredBy: customerLookup[userId]?.referredBy || "Direct",
+              partnerId: data.partnerId || "",
+              partnerName: data.partnerName || "",
+              displayUtr: data.transactionId || data.utrId || "N/A",
+              ...data,
+            };
+          });
+        });
 
-      setRequests(sorted);
-    } catch (error) {
-      console.error("🔥 Error:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        const nested = await Promise.all(allReqPromises);
+        const allRequests = nested.flat();
 
-  useEffect(() => {
-    fetchRechargeRequests();
-  }, [fetchRechargeRequests]);
+        // Sort by date (latest first)
+        const sorted = allRequests.sort((a, b) => {
+          const d1 = a.requestedDate?.toDate?.() || 0;
+          const d2 = b.requestedDate?.toDate?.() || 0;
+          return d2 - d1;
+        });
 
-  // Function to handle status change
+        setRequests(sorted);
+      } catch (error) {
+        console.error("🔥 Error fetching recharge requests:", error);
+      } finally {
+        setLoading(false);
+      }
+    }, []);
+
+    useEffect(() => {
+      fetchRechargeRequests();
+    }, [fetchRechargeRequests]);
+
+
+  const filteredRequests = requests.filter((r) => {
+  // 🔍 SEARCH FILTER
+  const searchMatch =
+    r.userName?.toLowerCase().includes(searchTerm) ||
+    r.userId?.toLowerCase().includes(searchTerm) ||
+    r.partnerName?.toLowerCase().includes(searchTerm) ||
+    r.displayUtr?.toLowerCase().includes(searchTerm);
+
+  if (!searchMatch) return false;
+
+  // 📅 DATE FILTER
+  if (!r.requestedDate?.toDate) return true;
+
+  const reqDate = r.requestedDate.toDate();
+  const from = fromDate ? new Date(fromDate) : null;
+  const to = toDate ? new Date(toDate) : null;
+
+  if (from && reqDate < from) return false;
+
+  if (to) {
+    const endOfDay = new Date(to);
+    endOfDay.setHours(23, 59, 59, 999);
+    if (reqDate > endOfDay) return false;
+  }
+
+  return true;
+});
+
+
+    /* =========================
+      STATUS UPDATE
+    ========================= */
   const handleStatusChange = async (userId, requestId, newStatus) => {
-    try {
-      setUpdatingId(requestId);
-      
-      // Update in Firebase
-      const requestRef = doc(db, `customers/${userId}/rechargeRequest`, requestId);
-      await updateDoc(requestRef, {
-        rechargeStatus: newStatus
-      });
-      
-      // Update local state
-      setRequests(prevRequests =>
-        prevRequests.map(request => {
-          if (request.id === requestId && request.userId === userId) {
-            return { ...request, rechargeStatus: newStatus };
-          }
-          return request;
-        })
-      );
-      
-      console.log(`Status updated to ${newStatus} for request ${requestId}`);
-    } catch (error) {
-      console.error("Error updating status:", error);
-      alert("Failed to update status. Please try again.");
-    } finally {
-      setUpdatingId(null);
-    }
-  };
+  // If rejected → open modal
+  if (newStatus === "Rejected") {
+    setRejectModal({ userId, requestId });
+    return;
+  }
 
-  // Excel Export with Referred By
-  const handleDownloadExcel = () => {
-    const excelData = requests.map((r) => ({
-      "User Name": r.userName,
-      "User ID": r.userId,
-      "Referred By": r.referredBy,
-      "UTR ID": r.displayUtr,
-      "Mobile": r.number || "N/A",
-      "Status": r.rechargeStatus || "Pending",
-      "Date": r.requestedDate?.toDate ? r.requestedDate.toDate().toLocaleString() : "N/A",
-    }));
+  try {
+    setUpdatingId(requestId);
+    const requestRef = doc(
+      db,
+      `customers/${userId}/rechargeRequest`,
+      requestId
+    );
 
-    const worksheet = XLSX.utils.json_to_sheet(excelData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Recharge Report");
-    XLSX.writeFile(workbook, "Recharge_Requests.xlsx");
-  };
+    await updateDoc(requestRef, {
+      rechargeStatus: newStatus,
+      rejectedReason: "", // clear if previously rejected
+    });
 
-  return (
-    <div style={{ backgroundColor: "#f4f7f6", minHeight: "100vh", paddingTop: "80px" }}>
-      <div className="container-fluid px-4">
-        {/* Header Section */}
-        <div className="d-flex justify-content-between align-items-center py-3 px-4 rounded-3 shadow-sm bg-white border mb-4">
-          <h4 className="fw-bold m-0 text-primary">Recharge Management</h4>
-          <button onClick={handleDownloadExcel} className="btn btn-success rounded-pill px-4">
-             📥 Export Excel
-          </button>
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.id === requestId && r.userId === userId
+          ? { ...r, rechargeStatus: newStatus, rejectedReason: "" }
+          : r
+      )
+    );
+  } catch (err) {
+    console.error("Error updating status:", err);
+    alert("Failed to update status");
+  } finally {
+    setUpdatingId(null);
+  }
+};
+
+    const handleSearchChange = (value) => {
+  setSearchTerm(value);
+};
+
+    /* =========================
+      PARTNER UPDATE
+    ========================= */
+    const handlePartnerChange = async (r, partnerId) => {
+      try {
+        const partner = partners.find((p) => p.id === partnerId);
+        const requestRef = doc(
+          db,
+          `customers/${r.userId}/rechargeRequest`,
+          r.id
+        );
+
+        await updateDoc(requestRef, {
+          partnerId,
+          partnerName: partner?.name || "",
+        });
+
+        setRequests((prev) =>
+          prev.map((req) =>
+            req.id === r.id && req.userId === r.userId
+              ? {
+                  ...req,
+                  partnerId,
+                  partnerName: partner?.name || "",
+                }
+              : req
+          )
+        );
+      } catch (err) {
+        console.error("Error updating partner:", err);
+        alert("Failed to update partner");
+      }
+    };
+
+    /* =========================
+      EXCEL EXPORT
+    ========================= */
+    const handleDownloadExcel = () => {
+      const excelData = filteredRequests.map((r) => ({
+
+        "User Name": r.userName,
+        "User ID": r.userId,
+        "Referred By": r.referredBy,
+        "Partner Name": r.partnerName || "N/A",
+        "UTR ID": r.displayUtr,
+        "Mobile": r.number || "N/A",
+        "Plan Price": r.plan?.price || "N/A",
+        "Status": r.rechargeStatus || "Pending",
+        "Rejected Reason": r.rejectedReason || "",
+        "Date": r.requestedDate?.toDate
+          ? r.requestedDate.toDate().toLocaleString()
+          : "N/A",
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Recharge Report");
+      XLSX.writeFile(workbook, "Recharge_Requests.xlsx");
+    };
+
+    const confirmReject = async () => {
+  if (!rejectReason.trim()) {
+    alert("Please enter rejection reason");
+    return;
+  }
+
+  try {
+    setUpdatingId(rejectModal.requestId);
+
+    const requestRef = doc(
+      db,
+      `customers/${rejectModal.userId}/rechargeRequest`,
+      rejectModal.requestId
+    );
+
+    await updateDoc(requestRef, {
+      rechargeStatus: "Rejected",
+      rejectedReason: rejectReason,
+    });
+
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.id === rejectModal.requestId && r.userId === rejectModal.userId
+          ? {
+              ...r,
+              rechargeStatus: "Rejected",
+              rejectedReason: rejectReason,
+            }
+          : r
+      )
+    );
+
+    setRejectModal(null);
+    setRejectReason("");
+  } catch (err) {
+    console.error(err);
+    alert("Failed to reject request");
+  } finally {
+    setUpdatingId(null);
+  }
+};
+
+    /* =========================
+      UI
+    ========================= */
+    return (
+      <div style={{ backgroundColor: "#f4f7f6", minHeight: "100vh", }}>
+        <div className="mt-1">
+         <FixedHeader onSearchChange={handleSearchChange} />
+          
+   <div className="bg-white border rounded-3 shadow-sm p-3 mb-4">
+  <div className="row g-3 align-items-end">
+
+    {/* TITLE */}
+    <div className="col-12 col-md-4">
+      <h4 className="fw-bold text-primary mb-0">
+        Recharge Management
+      </h4>
+    </div>
+
+    {/* DATE FILTERS */}
+    <div className="col-12 col-md-5">
+      <div className="row g-2">
+        <div className="col-6">
+          <label className="small text-muted">From</label>
+          <input
+            type="date"
+            className="form-control form-control-sm"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+          />
         </div>
 
-        {/* Table Section */}
-        <div className="card shadow-sm border-0 rounded-4 overflow-hidden">
-          <div className="table-responsive">
-            <table className="table table-hover align-middle mb-0">
-              <thead className="bg-light">
-                <tr className="small text-uppercase text-muted">
-                  <th className="ps-4">User & Referrer</th>
-                  <th>UTR / Transaction ID</th>
-                  <th>Mobile</th>
-                  <th>Plan</th>
-                  <th>Status Update</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan="5" className="text-center py-5">Loading...</td></tr>
-                ) : (
-                  requests.map((r) => (
-                    <tr key={`${r.userId}-${r.id}`}>
-                      <td className="ps-4">
-                        <div className="fw-bold text-dark">{r.userName}</div>
-                        <div className="text-muted small" style={{ fontSize: '11px' }}>
-                          ID: {r.userId} | <span className="text-primary">Ref: {r.referredBy}</span>
-                        </div>
-                      </td>
-                      <td><code className="small bg-light px-2 py-1">{r.displayUtr}</code></td>
-                      <td className="fw-bold text-secondary">{r.number}</td>
-                      <td>₹{r.plan?.price}</td>
-                      <td>
-                        <select
-                          className="form-select form-select-sm fw-bold"
-                          value={r.rechargeStatus || "Pending"}
-                          onChange={(e) => handleStatusChange(r.userId, r.id, e.target.value)}
-                          disabled={updatingId === r.id}
-                          style={{
-                            borderLeft: r.rechargeStatus === "Success" 
-                              ? "4px solid green" 
-                              : r.rechargeStatus === "Failed" 
-                                ? "4px solid red" 
-                                : "4px solid orange"
-                          }}
-                        >
-                          <option value="Pending">Pending</option>
-                          <option value="Success">Success</option>
-                          <option value="Failed">Failed</option>
-                        </select>
-                        {updatingId === r.id && (
-                          <div className="text-muted small mt-1">
-                            <span className="spinner-border spinner-border-sm me-1"></span>
-                            Updating...
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div className="col-6">
+          <label className="small text-muted">To</label>
+          <input
+            type="date"
+            className="form-control form-control-sm"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+          />
         </div>
       </div>
     </div>
-  );
-};
 
-export default RechargeRequestList;
+    {/* EXPORT */}
+    <div className="col-12 col-md-3 text-md-end">
+      <button
+        onClick={handleDownloadExcel}
+        className="btn btn-success w-100 w-md-auto rounded-pill"
+      >
+        📥 Export Excel
+      </button>
+    </div>
+
+  </div>
+</div>
+
+
+          {/* Table */}
+          <div className="card shadow-sm border-0 rounded-4 overflow-hidden">
+            <div className="table-responsive" style={{ maxHeight: "70vh" }}>
+
+              <table className="table table-hover align-middle mb-0">
+                <thead className="bg-light">
+                  <tr className="small text-uppercase text-muted">
+                    <th className="ps-4">User & Referrer</th>
+                    <th>UTR</th>
+                    <th>Mobile</th>
+                    <th>Plan</th>
+                    <th>Partner</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan="6" className="text-center py-5">
+                        Loading...
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredRequests.map((r) => (
+
+                      <tr key={`${r.userId}-${r.id}`}>
+                        <td className="ps-4">
+  <div className="fw-bold">{r.userName}</div>
+
+  <div className="text-muted small d-md-block d-none">
+    ID: {r.userId} | Ref: {r.referredBy}
+  </div>
+
+  {/* MOBILE EXTRA INFO */}
+  <div className="d-md-none small text-muted">
+    <div>ID: {r.userId}</div>
+    <div>Ref: {r.referredBy}</div>
+  </div>
+</td>
+
+
+                        <td>
+                          <code className="small bg-light px-2 py-1">
+                            {r.displayUtr}
+                          </code>
+                        </td>
+
+                        <td>{r.number || "N/A"}</td>
+                        <td>₹{r.plan?.price || "—"}</td>
+
+                        {/* Partner Dropdown */}
+                        <td>
+                          <select
+                            className="form-select form-select-sm"
+                            value={r.partnerId}
+                            onChange={(e) =>
+                              handlePartnerChange(r, e.target.value)
+                            }
+                          >
+                            <option value="">Select Partner</option>
+                            {partners.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* Status */}
+                        <td>
+    <select
+  className={`form-select form-select-sm fw-bold mt-1 ${
+    r.rechargeStatus === "Success"
+      ? "text-success"
+      : r.rechargeStatus === "Rejected"
+      ? "text-danger"
+      : "text-warning"
+  }`}
+  value={r.rechargeStatus || "Processing"}
+  onChange={(e) =>
+    handleStatusChange(r.userId, r.id, e.target.value)
+  }
+  disabled={updatingId === r.id}
+>
+
+  <option value="Processing">Processing</option>
+  <option value="Success">Success</option>
+  <option value="Rejected">Rejected</option>
+</select>
+{r.rechargeStatus === "Rejected" && r.rejectedReason && (
+  <div className="alert alert-danger py-1 px-2 mt-2 small">
+    ❌ {r.rejectedReason}
+  </div>
+)}
+
+
+                          {updatingId === r.id && (
+                            <div className="text-muted small mt-1">
+                              <span className="spinner-border spinner-border-sm me-1" />
+                              Updating...
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                  {rejectModal && (
+  <div className="modal show d-block" style={{ background: "rgba(0,0,0,0.5)" }}>
+    <div className="modal-dialog modal-dialog-centered modal-sm">
+
+      <div className="modal-content rounded-4">
+        <div className="modal-header">
+          <h5 className="modal-title text-danger fw-bold">
+            Reject Recharge
+          </h5>
+          <button
+            className="btn-close"
+            onClick={() => setRejectModal(null)}
+          />
+        </div>
+
+        <div className="modal-body">
+          <label className="fw-semibold mb-2">Rejection Reason</label>
+          <textarea
+            className="form-control"
+            rows="3"
+            placeholder="Enter reason..."
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+          />
+        </div>
+
+        <div className="modal-footer">
+          <button
+            className="btn btn-secondary"
+            onClick={() => setRejectModal(null)}
+          >
+            Cancel
+          </button>
+          <button className="btn btn-danger" onClick={confirmReject}>
+            Confirm Reject
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  export default RechargeRequestList;

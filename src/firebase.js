@@ -5,6 +5,7 @@ import {
   getDocs,
   doc,
   addDoc,
+  setDoc,        // ✅ ADD THIS
   updateDoc,
   deleteDoc,
   getDoc,
@@ -12,6 +13,7 @@ import {
   serverTimestamp,
   onSnapshot,
 } from "firebase/firestore";
+
 import {
   getStorage,
   ref,
@@ -50,12 +52,13 @@ const auth = getAuth(app); // Initialize Firebase Auth
 export {
   db,
   storage,
-  auth, // 👈 New: Export the auth object
+  auth,
   collection,
   getDocs,
   onSnapshot,
   doc,
   addDoc,
+  setDoc,        // ✅ ADD THIS
   updateDoc,
   deleteDoc,
   getDoc,
@@ -66,8 +69,8 @@ export {
   uploadBytesResumable,
   getDownloadURL,
   deleteObject,
-  // 👈 New: Export Auth functions
   signInWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
 };
+

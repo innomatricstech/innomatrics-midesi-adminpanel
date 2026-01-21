@@ -9,6 +9,18 @@ import {
   updateDoc,
   getDoc,
 } from "../../firebase";
+{/* Add these imports to your existing import statements */}
+import {
+  RiShoppingBag3Line,
+  RiTimeLine,
+  RiTruckLine,
+  RiCheckboxCircleLine,
+  RiCloseCircleLine,
+  RiAlertLine,
+  RiArrowUpLine,
+  RiArrowDownLine,
+  RiCheckLine,
+} from "react-icons/ri";
 
 import ViewOrderModal from "./ViewOrderPage";
 import "bootstrap/dist/css/bootstrap.min.css";
@@ -536,7 +548,7 @@ const OrderPage = () => {
     try {
       console.log("🗑️ Deleting order:", deleteOrder.id);
       
-      await deleteDoc(
+      await deleteDoc(  
         doc(
           db,
           CUSTOMER_COLLECTION_NAME,
@@ -589,41 +601,234 @@ const OrderPage = () => {
           <h2 className="fw-bold text-primary mb-0">Order Management</h2>
         </div>
 
-        {/* Order Stats */}
-        <div className="row mb-4">
-          <div className="col-md-3">
-            <div className="card bg-primary text-white">
-              <div className="card-body">
-                <h5 className="card-title">Total Orders</h5>
-                <h2 className="fw-bold">{orders.length}</h2>
-              </div>
-            </div>
+      {/* Order Stats */}
+<div className="row g-4 mb-4">
+
+
+  {/* Pending Orders */}
+  <div className="col-xl-3 col-lg-4 col-md-6">
+    <div 
+      className="card border-0 shadow-sm cursor-pointer hover-lift"
+      onClick={() => handleFilterOrders('Pending')}
+      style={{
+        background: 'linear-gradient(135deg, #f59e0b15 0%, transparent 100%)',
+        borderLeft: '4px solid #f59e0b',
+        transition: 'all 0.3s ease',
+      }}
+    >
+      <div className="card-body p-4">
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <div className="p-3 rounded-circle" style={{ background: '#f59e0b20' }}>
+            <RiTimeLine size={24} color="#f59e0b" />
           </div>
-          <div className="col-md-3">
-            <div className="card bg-warning text-dark">
-              <div className="card-body">
-                <h5 className="card-title">Pending</h5>
-                <h2 className="fw-bold">{orders.filter(o => o.status === "Pending").length}</h2>
-              </div>
-            </div>
+          <span className="text-muted small">
+            <RiAlertLine className="me-1" />
+            Needs attention
+          </span>
+        </div>
+        <h2 className="fw-bold display-6 mb-1" style={{ color: '#f59e0b' }}>
+          {orders.filter(o => o.status === "Pending").length}
+        </h2>
+        <p className="text-muted mb-0">Pending Orders</p>
+        <div className="mt-3">
+          <div className="progress" style={{ height: '4px' }}>
+            <div 
+              className="progress-bar" 
+              style={{ 
+                width: `${orders.length > 0 ? (orders.filter(o => o.status === "Pending").length / orders.length * 100) : 0}%`,
+                backgroundColor: '#f59e0b'
+              }}
+            ></div>
           </div>
-          <div className="col-md-3">
-            <div className="card bg-info text-dark">
-              <div className="card-body">
-                <h5 className="card-title">Shipped</h5>
-                <h2 className="fw-bold">{orders.filter(o => o.status === "Shipped").length}</h2>
-              </div>
-            </div>
+          <small className="text-muted mt-1 d-block">
+            {orders.length > 0 ? Math.round((orders.filter(o => o.status === "Pending").length / orders.length * 100)) : 0}% of total
+          </small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* Shipped Orders */}
+  <div className="col-xl-3 col-lg-4 col-md-6">
+    <div 
+      className="card border-0 shadow-sm cursor-pointer hover-lift"
+      onClick={() => handleFilterOrders('Shipped')}
+      style={{
+        background: 'linear-gradient(135deg, #0ea5e915 0%, transparent 100%)',
+        borderLeft: '4px solid #0ea5e9',
+        transition: 'all 0.3s ease',
+      }}
+    >
+      <div className="card-body p-4">
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <div className="p-3 rounded-circle" style={{ background: '#0ea5e920' }}>
+            <RiTruckLine size={24} color="#0ea5e9" />
           </div>
-          <div className="col-md-3">
-            <div className="card bg-success text-white">
-              <div className="card-body">
-                <h5 className="card-title">Delivered</h5>
-                <h2 className="fw-bold">{orders.filter(o => o.status === "Delivered").length}</h2>
-              </div>
-            </div>
+          <span className="text-success small fw-semibold">
+            <RiArrowUpLine className="me-1" />
+            In transit
+          </span>
+        </div>
+        <h2 className="fw-bold display-6 mb-1" style={{ color: '#0ea5e9' }}>
+          {orders.filter(o => o.status === "Shipped").length}
+        </h2>
+        <p className="text-muted mb-0">Shipped Orders</p>
+        <div className="mt-3">
+          <div className="progress" style={{ height: '4px' }}>
+            <div 
+              className="progress-bar" 
+              style={{ 
+                width: `${orders.length > 0 ? (orders.filter(o => o.status === "Shipped").length / orders.length * 100) : 0}%`,
+                backgroundColor: '#0ea5e9'
+              }}
+            ></div>
+          </div>
+          <small className="text-muted mt-1 d-block">
+            {orders.length > 0 ? Math.round((orders.filter(o => o.status === "Shipped").length / orders.length * 100)) : 0}% of total
+          </small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* Delivered Orders */}
+  <div className="col-xl-3 col-lg-4 col-md-6">
+    <div 
+      className="card border-0 shadow-sm cursor-pointer hover-lift"
+      onClick={() => handleFilterOrders('Delivered')}
+      style={{
+        background: 'linear-gradient(135deg, #10b98115 0%, transparent 100%)',
+        borderLeft: '4px solid #10b981',
+        transition: 'all 0.3s ease',
+      }}
+    >
+      <div className="card-body p-4">
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <div className="p-3 rounded-circle" style={{ background: '#10b98120' }}>
+            <RiCheckboxCircleLine size={24} color="#10b981" />
+          </div>
+          <span className="text-success small fw-semibold">
+            <RiCheckLine className="me-1" />
+            Completed
+          </span>
+        </div>
+        <h2 className="fw-bold display-6 mb-1" style={{ color: '#10b981' }}>
+          {orders.filter(o => o.status === "Delivered").length}
+        </h2>
+        <p className="text-muted mb-0">Delivered Orders</p>
+        <div className="mt-3">
+          <div className="progress" style={{ height: '4px' }}>
+            <div 
+              className="progress-bar" 
+              style={{ 
+                width: `${orders.length > 0 ? (orders.filter(o => o.status === "Delivered").length / orders.length * 100) : 0}%`,
+                backgroundColor: '#10b981'
+              }}
+            ></div>
+          </div>
+          <small className="text-muted mt-1 d-block">
+            {orders.length > 0 ? Math.round((orders.filter(o => o.status === "Delivered").length / orders.length * 100)) : 0}% of total
+          </small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* Cancelled Orders */}
+  <div className="col-xl-3 col-lg-4 col-md-6">
+    <div 
+      className="card border-0 shadow-sm cursor-pointer hover-lift"
+      onClick={() => handleFilterOrders('Canceled')}
+      style={{
+        background: 'linear-gradient(135deg, #ef444415 0%, transparent 100%)',
+        borderLeft: '4px solid #ef4444',
+        transition: 'all 0.3s ease',
+      }}
+    >
+      <div className="card-body p-4">
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <div className="p-3 rounded-circle" style={{ background: '#ef444420' }}>
+            <RiCloseCircleLine size={24} color="#ef4444" />
+          </div>
+          <span className="text-danger small fw-semibold">
+            <RiArrowDownLine className="me-1" />
+            Lost orders
+          </span>
+        </div>
+        <h2 className="fw-bold display-6 mb-1" style={{ color: '#ef4444' }}>
+          {orders.filter(o => o.status === "Canceled").length}
+        </h2>
+        <p className="text-muted mb-0">Canceled Orders</p>
+        <div className="mt-3">
+          <div className="progress" style={{ height: '4px' }}>
+            <div 
+              className="progress-bar" 
+              style={{ 
+                width: `${orders.length > 0 ? (orders.filter(o => o.status === "Canceled").length / orders.length * 100) : 0}%`,
+                backgroundColor: '#ef4444'
+              }}
+            ></div>
+          </div>
+          <small className="text-muted mt-1 d-block">
+            {orders.length > 0 ? Math.round((orders.filter(o => o.status === "Canceled").length / orders.length * 100)) : 0}% of total
+          </small>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+{/* Add this CSS to your existing style tag */}
+<style jsx>{`
+  .cursor-pointer {
+    cursor: pointer;
+  }
+  .hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1) !important;
+  }
+  .progress {
+    overflow: hidden;
+  }
+  .progress-bar {
+    border-radius: 2px;
+  }
+`}</style>
+{/* TOTAL ORDERS SUMMARY */}
+<div className="row mb-4">
+  <div className="col-12">
+    <div
+      className="card border-0 shadow-sm hover-lift"
+      style={{
+        background: "linear-gradient(135deg, rgba(99,102,241,0.3) 0%, rgba(99,102,241,0.08) 100%)",
+
+        borderLeft: "5px solid #6366f1",
+      }}
+    >
+      <div className="card-body d-flex align-items-center justify-content-between p-4">
+        <div className="d-flex align-items-center">
+          <div
+            className="p-3 rounded-circle me-3"
+            style={{ background: "#6366f120" }}
+          >
+            <RiShoppingBag3Line size={28} color="#6366f1" />
+          </div>
+          <div>
+            <h5 className="mb-1 fw-semibold text-muted">Total Orders</h5>
+            <h2 className="fw-bold mb-0">{orders.length}</h2>
           </div>
         </div>
+
+        <span className="badge bg-primary bg-opacity-10 text-primary px-3 py-2">
+          All statuses included
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
 
         <div className="card shadow-lg rounded-4">
           <div className="card-header bg-dark text-white">

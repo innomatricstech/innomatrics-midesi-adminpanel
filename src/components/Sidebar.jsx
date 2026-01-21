@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from "react";
 import "../styles/sidebar.css";
 import { Offcanvas } from "bootstrap";
-import Logo from "../assets/logo.jpg";       // ✅ Full logo
+import Logo from "../assets/logo.jpg";
+
+import { useAuth } from "./Auth/authContext";
+import "../firebase"
+
+
 // import LogoSmall from "../assets/logo-small.png";  // Optional if you have small icon
 
 const Sidebar = ({ activeItem, onSelect }) => {
-  const [collapsed, setCollapsed] = useState(false);
+ 
 
+  const { role } = useAuth();   // ✅ THIS LINE FIXES IT
+  const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
     const checkWidth = () => {
       if (window.innerWidth >= 992 && collapsed) setCollapsed(false);
@@ -21,41 +28,50 @@ const Sidebar = ({ activeItem, onSelect }) => {
     {
       title: "MAIN MENU",
       items: [
-        { name: "Dashboard", icon: "⌂" },
-        { name: "Products", icon: "📦" },
-        { name: "Orders", icon: "📋" },
-        { name: "Category", icon: "🏷️" },
-        { name: "Brands", icon: "💎" },
-        { name: "Banners", icon: "🖼️" },
-        { name: "Youtube Videos", icon: "⏯️" },
-        { name: "Stock Notifier", icon: "📈" },
+        { name: "Dashboard", icon: "⌂" ,roles: ["admin", "employee"]},
+        { name: "Products", icon: "📦",roles: ["admin"] },
+        { name: "Orders", icon: "📋",roles: ["admin"] },
+        { name: "Category", icon: "🏷️",roles: ["admin"] },
+        { name: "Brands", icon: "💎" ,roles: ["admin"]},
+        { name: "Banners", icon: "🖼️" ,roles: ["admin"]},
+        { name: "Youtube Videos", icon: "⏯️" ,roles: ["admin"]},
+        { name: "Stock Notifier", icon: "📈",roles: ["admin"] },
       ],
     },
     {
       title: "MANAGEMENT",
       items: [
-        { name: "Wallet", icon: "💳" },
-        { name: "Referral", icon: "🤝" },
-        { name: "Recharge Request", icon: "💸" },
-        { name: "Recharge Provider", icon: "📶" },
-        { name: "Recharge Plan", icon: "📱" },
-        { name: "Partner Management", icon: "🧑‍💼" },
-        { name: "Customer Details", icon: "👤" },
+        { name: "Wallet", icon: "💳" ,roles: ["admin"]},
+        { name: "Referral", icon: "🤝" ,roles: ["admin"]},
+        { name: "Recharge Request", icon: "💸" ,roles: ["admin", "employee"]},
+        { name: "Recharge Provider", icon: "📶",roles: ["admin", "employee"] },
+        { name: "Recharge Plan", icon: "📱",roles: ["admin", "employee"] },
+        { name: "Partner Management", icon: "🧑‍💼",roles: ["admin"] },
+        { name: "Customer Details", icon: "👤",roles: ["admin"] },
       ],
     },
   ];
+const renderNav = (isMobileView) => (
+  <nav className="flex-grow-1 pt-3">
+    {navGroups.map((group) => {
 
-  const renderNav = (isMobileView) => (
-    <nav className="flex-grow-1 pt-3">
-      {navGroups.map((group) => (
+      // ✅ FILTER ITEMS BASED ON ROLE
+      const allowedItems = group.items.filter(item =>
+        item.roles.includes(role)
+      );
+
+      if (allowedItems.length === 0) return null;
+
+      return (
         <div key={group.title} className="mb-4">
           {!(collapsed && !isMobileView) && (
             <p className="text-uppercase text-muted small fw-bold mb-2 ps-3">
               {group.title}
             </p>
           )}
+
           <ul className="nav nav-pills flex-column mb-3">
-            {group.items.map((item) => (
+            {allowedItems.map((item) => (
               <li className="nav-item" key={item.name}>
                 <a
                   href="#"
@@ -68,7 +84,6 @@ const Sidebar = ({ activeItem, onSelect }) => {
                       ? "active"
                       : "text-dark hover-bg-light"
                   } p-2 mb-1 mx-2 d-flex align-items-center`}
-                  {...(isMobileView && { "data-bs-dismiss": "offcanvas" })}
                 >
                   <span className="me-2 fs-6 sidebar-icon">{item.icon}</span>
                   {!(collapsed && !isMobileView) && item.name}
@@ -77,9 +92,10 @@ const Sidebar = ({ activeItem, onSelect }) => {
             ))}
           </ul>
         </div>
-      ))}
-    </nav>
-  );
+      );
+    })}
+  </nav>
+);
 
   return (
     <>
