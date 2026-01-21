@@ -84,15 +84,19 @@ const AdminProfile = ({ adminData, loading }) => {
     <div className="card shadow border-0 rounded-4 p-3 mb-4 admin-profile-card">
       <div className="d-flex align-items-center">
         <div className="position-relative">
-          <img
-            src={userPhoto}
-            alt={displayName}
-            className="rounded-circle border"
-            width="80"
-            height="80"
-            style={{ objectFit: "cover" }}
-            loading="lazy"
-          />
+          <div
+  className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white"
+  style={{
+    width: 80,
+    height: 80,
+    fontSize: "28px",
+    background: "linear-gradient(135deg, #2563eb, #4f46e5)",
+    textTransform: "uppercase",
+  }}
+>
+  {displayName?.charAt(0) || "A"}
+</div>
+
           <span className="position-absolute bottom-0 end-0 bg-success border border-3 border-light rounded-circle p-1"></span>
         </div>
         <div className="ms-4">
