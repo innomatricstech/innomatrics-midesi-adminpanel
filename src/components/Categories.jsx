@@ -26,6 +26,8 @@ const CategoryList = () => {
   const [deleteCategory, setDeleteCategory] = useState(null);
   const [viewCategory, setViewCategory] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState("ALL");
+
 
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -254,16 +256,76 @@ const CategoryList = () => {
     <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
       <FixedHeader onSearchChange={setSearchTerm} />
 
+
       <div className="container-fluid p-4" style={{ paddingTop: "90px" }}>
         <div className="d-flex justify-content-between align-items-center mb-4">
           <h2 className="fw-bold text-primary">Category Management</h2>
-          <button
-            className="btn btn-gradient-primary shadow-sm rounded-pill px-4"
-            onClick={() => setShowAddModal(true)}
-          >
-            ➕ Add Category
-          </button>
+         
         </div>
+<div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+
+  {/* 🔍 Filter */}
+  <div className="dropdown">
+    <button
+      className="btn btn-outline-primary rounded-pill px-4 py-2 d-flex align-items-center gap-2 shadow-sm"
+      type="button"
+      data-bs-toggle="dropdown"
+      aria-expanded="false"
+    >
+      <i className="bi bi-funnel-fill fs-6"></i>
+
+      <span className="fw-semibold">
+        {selectedCategory === "ALL"
+          ? "All Categories"
+          : categories.find((c) => c.docId === selectedCategory)
+              ?.categoryName || "Category"}
+      </span>
+
+      <i className="bi bi-chevron-down small opacity-75"></i>
+    </button>
+
+    <ul className="dropdown-menu shadow-lg rounded-4 dropdown-menu-start mt-2">
+      <li>
+        <button
+          className={`dropdown-item d-flex justify-content-between align-items-center ${
+            selectedCategory === "ALL" ? "active fw-semibold" : ""
+          }`}
+          onClick={() => setSelectedCategory("ALL")}
+        >
+          All Categories
+          {selectedCategory === "ALL" && <i className="bi bi-check2"></i>}
+        </button>
+      </li>
+
+      <li><hr className="dropdown-divider" /></li>
+
+      {categories.map((cat) => (
+        <li key={cat.docId}>
+          <button
+            className={`dropdown-item d-flex justify-content-between align-items-center ${
+              selectedCategory === cat.docId ? "active fw-semibold" : ""
+            }`}
+            onClick={() => setSelectedCategory(cat.docId)}
+          >
+            {cat.categoryName}
+            {selectedCategory === cat.docId && <i className="bi bi-check2"></i>}
+          </button>
+        </li>
+      ))}
+    </ul>
+  </div>
+
+  {/* ➕ Add Category */}
+  <button
+    className="btn btn-gradient-primary rounded-pill px-4 py-2 shadow d-flex align-items-center gap-2"
+    onClick={() => setShowAddModal(true)}
+  >
+    <i className="bi bi-plus-lg"></i>
+    <span className="fw-semibold">Add Category</span>
+  </button>
+
+</div>
+
 
         <div className="card border-0 shadow-lg rounded-4 mt-4">
           <div className="table-responsive">
@@ -283,7 +345,10 @@ const CategoryList = () => {
                     <td colSpan="5" className="text-center p-4">Loading...</td>
                   </tr>
                 ) : filteredCategories.length ? (
-                  filteredCategories.map((cat) => (
+                  (filteredCategories.filter((cat) =>
+  selectedCategory === "ALL" ? true : cat.docId === selectedCategory
+)).map((cat) => (
+
                     <tr key={cat.docId}>
                       <td className="text-muted small">{cat.docId?.substring(0, 8)}...</td>
                       <td className="fw-bold">{cat.categoryName}</td>

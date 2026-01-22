@@ -42,6 +42,8 @@ const ProductList = () => {
   const [viewProduct, setViewProduct] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [currentAdminUser, setCurrentAdminUser] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState("All");
+
 
   /* Auth listener + fetch products */
   useEffect(() => {
@@ -340,16 +342,27 @@ const ProductList = () => {
       alert("Failed to delete.");
     }
   };
+const categories = [
+  "All",
+  ...Array.from(
+    new Set(products.map((p) => p.categoryName).filter(Boolean))
+  ),
+];
 
-  /* Search */
-  const displayedProducts = products.filter((p) => {
-    const t = searchTerm.toLowerCase();
-    return (
-      p.name.toLowerCase().includes(t) ||
-      p.id.toLowerCase().includes(t) ||
-      (p.keywords && p.keywords.some((k) => k.includes(t)))
-    );
-  });
+ const displayedProducts = products.filter((p) => {
+  const t = searchTerm.toLowerCase();
+
+  const matchesSearch =
+    p.name.toLowerCase().includes(t) ||
+    p.id.toLowerCase().includes(t) ||
+    (p.keywords && p.keywords.some((k) => k.includes(t)));
+
+  const matchesCategory =
+    selectedCategory === "All" ||
+    p.categoryName === selectedCategory;
+
+  return matchesSearch && matchesCategory;
+});
 
   if (loading) {
     return (
@@ -371,14 +384,55 @@ const ProductList = () => {
       <div className="container-fluid p-4" style={{ paddingTop: "90px" }}>
         <h2 className="mb-4 fw-bold text-primary">Product Management</h2>
 
-        <div className="d-flex justify-content-end mb-3">
+        
+
+ <div className="d-flex justify-content-end align-items-center gap-3 mb-4 flex-wrap">
+
+  {/* Filter Dropdown */}
+  <div className="dropdown">
+    <button
+      className="btn btn-outline-primary rounded-pill px-4 py-2 d-flex align-items-center gap-2 shadow-sm"
+      type="button"
+      data-bs-toggle="dropdown"
+      aria-expanded="false"
+    >
+      <i className="bi bi-funnel-fill"></i>
+      <span className="fw-semibold">{selectedCategory}</span>
+      <i className="bi bi-chevron-down small"></i>
+    </button>
+
+    <ul className="dropdown-menu dropdown-menu-end shadow-lg rounded-3">
+      {categories.map((cat) => (
+        <li key={cat}>
           <button
-            className="btn bg-primary text-white shadow-sm rounded-pill px-4"
-            onClick={() => setShowAddModal(true)}
+            className={`dropdown-item d-flex align-items-center justify-content-between ${
+              selectedCategory === cat ? "active fw-semibold" : ""
+            }`}
+            onClick={() => setSelectedCategory(cat)}
           >
-            + Add New Product
+            {cat}
+            {selectedCategory === cat && (
+              <i className="bi bi-check2 text-white"></i>
+            )}
           </button>
-        </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+
+  {/* Add Product Button */}
+  <button
+    className="btn btn-primary rounded-pill px-4 py-2 shadow d-flex align-items-center gap-2"
+    onClick={() => setShowAddModal(true)}
+  >
+    <i className="bi bi-plus-lg"></i>
+    <span className="fw-semibold">Add New Product</span>
+  </button>
+
+</div>
+
+
+    
 
         <div className="card shadow-lg border-0 rounded-4">
           <div className="table-responsive">
