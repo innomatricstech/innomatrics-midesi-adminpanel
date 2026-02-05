@@ -32,6 +32,7 @@ const Sidebar = ({ activeItem, onSelect }) => {
         { name: "Products", icon: "📦",roles: ["admin"] },
         { name: "Orders", icon: "📋",roles: ["admin"] },
         { name: "Category", icon: "🏷️",roles: ["admin"] },
+        { name: "Sub Category", icon: "🏷️",roles: ["admin"] },
         { name: "Brands", icon: "💎" ,roles: ["admin"]},
         { name: "Banners", icon: "🖼️" ,roles: ["admin"]},
         { name: "Youtube Videos", icon: "⏯️" ,roles: ["admin"]},

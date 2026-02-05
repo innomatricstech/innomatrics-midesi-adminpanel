@@ -4,7 +4,13 @@ import * as XLSX from "xlsx";
 import { db } from "../../firebase";
 import FixedHeader from "../FixedHeader";
 import { useAuth } from "../Auth/authContext";
-import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  getDoc,
+  doc,
+  updateDoc,
+} from "firebase/firestore";
 
 const EmployeeRechargeRequestList = () => {
   const { user } = useAuth();
@@ -36,20 +42,19 @@ const EmployeeRechargeRequestList = () => {
           collection(db, `customers/${userId}/rechargeRequest`)
         );
 
-        return reqSnap.docs
-          .map((reqDoc) => {
-            const data = reqDoc.data();
-            return {
-              id: reqDoc.id,
-              userId,
-              userName: customerLookup[userId],
-              partnerId: data.partnerId,
-              displayUtr: data.transactionId || data.utrId || "N/A",
-              requestedDate: data.requestedDate,
-              ...data,
-            };
-          })
-          .filter((r) => r.partnerId === partnerId);
+        return reqSnap.docs.map((reqDoc) => {
+          const data = reqDoc.data();
+          return {
+            id: reqDoc.id,
+            userId,
+            userName: customerLookup[userId],
+            partnerId: data.partnerId || "",
+            partnerName: data.partnerName || "",
+            displayUtr: data.transactionId || data.utrId || "N/A",
+            requestedDate: data.requestedDate,
+            ...data,
+          };
+        });
       });
 
       const nested = await Promise.all(allReqPromises);
@@ -68,14 +73,12 @@ const EmployeeRechargeRequestList = () => {
   /* ================= FILTERING ================= */
   const filteredRequests = useMemo(() => {
     return requests.filter((r) => {
-      // 🔍 Search
       const searchMatch =
         r.userName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.displayUtr?.toLowerCase().includes(searchTerm.toLowerCase());
 
       if (!searchMatch) return false;
 
-      // 📅 Date filter
       if (!r.requestedDate?.toDate) return true;
       const date = r.requestedDate.toDate();
 
@@ -94,17 +97,36 @@ const EmployeeRechargeRequestList = () => {
   const handleStatusChange = async (userId, requestId, status) => {
     try {
       setUpdatingId(requestId);
+
+      // ✅ FETCH REAL PARTNER NAME FROM partners COLLECTION
+      const partnerSnap = await getDoc(doc(db, "partners", partnerId));
+      const partnerName = partnerSnap.exists()
+        ? partnerSnap.data().name
+        : "Partner";
+
       await updateDoc(
         doc(db, `customers/${userId}/rechargeRequest`, requestId),
-        { rechargeStatus: status }
+        {
+          rechargeStatus: status,
+          partnerId: partnerId,
+          partnerName: partnerName,
+        }
       );
 
       setRequests((prev) =>
         prev.map((r) =>
-          r.id === requestId ? { ...r, rechargeStatus: status } : r
+          r.id === requestId
+            ? {
+                ...r,
+                rechargeStatus: status,
+                partnerId: partnerId,
+                partnerName: partnerName,
+              }
+            : r
         )
       );
-    } catch {
+    } catch (err) {
+      console.error(err);
       alert("Update failed");
     } finally {
       setUpdatingId(null);
@@ -115,11 +137,11 @@ const EmployeeRechargeRequestList = () => {
   const handleExportExcel = () => {
     const excelData = filteredRequests.map((r) => ({
       "Customer Name": r.userName,
-      "UTR": r.displayUtr,
-      "Mobile": r.number || "N/A",
-      "Amount": r.plan?.price || "N/A",
-      "Status": r.rechargeStatus || "Processing",
-      "Date": r.requestedDate?.toDate
+      UTR: r.displayUtr,
+      Mobile: r.number || "N/A",
+      Amount: r.plan?.price || "N/A",
+      Status: r.rechargeStatus || "Processing",
+      Date: r.requestedDate?.toDate
         ? r.requestedDate.toDate().toLocaleString()
         : "N/A",
     }));
@@ -136,16 +158,12 @@ const EmployeeRechargeRequestList = () => {
       <FixedHeader onSearchChange={setSearchTerm} />
 
       <div className="container mt-4">
-        {/* HEADER */}
         <div className="card shadow-sm rounded-4 p-3 mb-4">
           <div className="row g-3 align-items-end">
             <div className="col-md-4">
               <h4 className="fw-bold text-primary mb-0">
                 My Recharge Requests
               </h4>
-              <small className="text-muted">
-                Showing only your assigned recharges
-              </small>
             </div>
 
             <div className="col-md-4">
@@ -179,7 +197,6 @@ const EmployeeRechargeRequestList = () => {
           </div>
         </div>
 
-        {/* TABLE */}
         <div className="card shadow-sm rounded-4">
           <div className="table-responsive">
             <table className="table table-hover align-middle mb-0">

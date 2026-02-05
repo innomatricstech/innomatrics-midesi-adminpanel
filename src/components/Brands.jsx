@@ -28,15 +28,52 @@ const BrandList = () => {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  const [newBrand, setNewBrand] = useState({
-    brandName: "",
-    brandImage: "",
-    backGroundImage: "",
-    brandImageFile: null,
-    backGroundImageFile: null,
-  });
+  const [categories, setCategories] = useState([]);
+const [subCategories, setSubCategories] = useState([]);
+
+const [selectedCategory, setSelectedCategory] = useState("");
+const [selectedSubCategory, setSelectedSubCategory] = useState("");
+
+
+ const [newBrand, setNewBrand] = useState({
+  brandName: "",
+  brandImage: "",
+  backGroundImage: "",
+  brandImageFile: null,
+  backGroundImageFile: null,
+  categoryId: "",
+  categoryName: "",
+  subCategoryId: "",
+  subCategoryName: "",
+});
 
   const brandCollectionRef = collection(db, "brands");
+
+  const fetchCategories = async () => {
+  const snap = await getDocs(collection(db, "category"));
+  setCategories(snap.docs.map(d => ({ ...d.data(), docId: d.id })));
+};
+
+useEffect(() => {
+  fetchCategories();
+}, []);
+
+const fetchSubCategories = async (categoryId) => {
+  if (!categoryId) {
+    setSubCategories([]);
+    return;
+  }
+
+  const ref = collection(db, "category", categoryId, "subcategories");
+  const snap = await getDocs(ref);
+
+  setSubCategories(snap.docs.map(d => ({ ...d.data(), docId: d.id })));
+};
+
+useEffect(() => {
+  fetchSubCategories(selectedCategory);
+  setSelectedSubCategory("");
+}, [selectedCategory]);
 
   // Fetch Brands Logic
   const fetchBrands = async () => {
@@ -114,49 +151,51 @@ const BrandList = () => {
     }
   };
 
-  // Add Brand Logic
-  const handleAddSubmit = async (e) => {
-    e.preventDefault();
+const handleAddSubmit = async (e) => {
+  e.preventDefault();
 
-    if (!newBrand.brandName.trim()) return alert("Brand name required");
+  if (!newBrand.brandName.trim() || !newBrand.categoryId || !newBrand.subCategoryId) {
+    alert("Please select category and subcategory");
+    return;
+  }
 
-    try {
-      let brandImageURL = newBrand.brandImage;
-      let bgImageURL = newBrand.backGroundImage;
+  let brandImageURL = newBrand.brandImage;
+  let bgImageURL = newBrand.backGroundImage;
 
-      if (newBrand.brandImageFile)
-        brandImageURL = await uploadImage(newBrand.brandImageFile, setProgress);
+  if (newBrand.brandImageFile)
+    brandImageURL = await uploadImage(newBrand.brandImageFile, setProgress);
 
-      if (newBrand.backGroundImageFile)
-        bgImageURL = await uploadImage(newBrand.backGroundImageFile, setProgress);
+  if (newBrand.backGroundImageFile)
+    bgImageURL = await uploadImage(newBrand.backGroundImageFile, setProgress);
 
-      const docRef = await addDoc(brandCollectionRef, {
-        brandName: newBrand.brandName,
-        brandImage: brandImageURL,
-        backGroundImage: bgImageURL,
-      // Removed any potential createdAt or updatedAt field here
-      });
+  const docRef = await addDoc(brandCollectionRef, {
+    brandName: newBrand.brandName,
+    brandImage: brandImageURL,
+    backGroundImage: bgImageURL,
+    categoryId: newBrand.categoryId,
+    categoryName: newBrand.categoryName,
+    subCategoryId: newBrand.subCategoryId,
+    subCategoryName: newBrand.subCategoryName,
+  });
 
-      await updateDoc(docRef, { brandId: docRef.id });
+  await updateDoc(docRef, { brandId: docRef.id });
 
-      fetchBrands();
-      setShowAddModal(false);
+  fetchBrands();
+  setShowAddModal(false);
 
-      setNewBrand({
-        brandName: "",
-        brandImage: "",
-        backGroundImage: "",
-        brandImageFile: null,
-        backGroundImageFile: null,
-      });
-    } catch (error) {
-      console.error("❌ Error adding brand:", error);
-      alert("Failed to add brand");
-    } finally {
-      setUploading(false);
-      setProgress(0);
-    }
-  };
+  setNewBrand({
+  brandName: "",
+  brandImage: "",
+  backGroundImage: "",
+  brandImageFile: null,
+  backGroundImageFile: null,
+  categoryId: "",
+  categoryName: "",
+  subCategoryId: "",
+  subCategoryName: "",
+});
+
+};
 
   // Edit Brand Logic
   const handleEditSubmit = async (e) => {
@@ -175,13 +214,18 @@ const BrandList = () => {
 
       const docRef = doc(db, "brands", editBrand.docId);
 
-      const updatedData = {
-        brandName: editBrand.brandName,
-        brandImage: brandImageURL,
-        backGroundImage: bgImageURL,
-        // Removed any potential updatedAt field here
-      };
-      
+    const updatedData = {
+  brandName: editBrand.brandName,
+  brandImage: brandImageURL,
+  backGroundImage: bgImageURL,
+
+  // ✅ ADD THESE
+  categoryId: editBrand.categoryId,
+  categoryName: editBrand.categoryName,
+  subCategoryId: editBrand.subCategoryId,
+  subCategoryName: editBrand.subCategoryName,
+};
+
       await updateDoc(docRef, updatedData);
 
       // Manual state update for immediate UI refresh
@@ -235,15 +279,18 @@ const BrandList = () => {
         <div className="card border-0 shadow-lg rounded-4 mt-4">
           <div className="table-responsive">
             <table className="table align-middle table-hover mb-0">
-              <thead className="table-primary text-white">
-                <tr>
-                  <th className="py-3 ps-4">ID</th>
-                  <th className="py-3">Name</th>
-                  <th className="py-3">Image</th>
-                  <th className="py-3">Background</th>
-                  <th className="text-center py-3 pe-4">Actions</th>
-                </tr>
-              </thead>
+             <thead className="table-primary text-white">
+  <tr>
+    <th className="py-3 ps-4">ID</th>
+    <th className="py-3">Brand</th>
+    <th className="py-3">Category</th>
+    <th className="py-3">Subcategory</th>
+    <th className="py-3">Image</th>
+    <th className="py-3">Background</th>
+    <th className="text-center py-3 pe-4">Actions</th>
+  </tr>
+</thead>
+
 
               <tbody>
                 {loading ? (
@@ -255,74 +302,81 @@ const BrandList = () => {
                   </tr>
                 ) : filteredBrands.length > 0 ? (
                   filteredBrands.map((brand) => (
-                    <tr key={brand.docId}>
-                      <td className="text-muted small ps-4">
-                        <span className="badge bg-light text-secondary">{brand.docId.substring(0, 8)}...</span>
-                      </td>
-                      <td className="fw-bold text-dark">{brand.brandName}</td>
+                  <tr key={brand.docId}>
+  <td className="ps-4 small text-muted">
+    {brand.docId.substring(0, 8)}…
+  </td>
 
-                      <td>
-                        {brand.brandImage && (
-                          <img
-                            src={brand.brandImage}
-                            alt="Brand"
-                            className="rounded shadow-sm"
-                            style={{
-                              width: "50px",
-                              height: "50px",
-                              objectFit: "cover",
-                            }}
-                          />
-                        )}
-                      </td>
+  <td className="fw-bold">{brand.brandName}</td>
 
-                      <td>
-                        {brand.backGroundImage && (
-                          <img
-                            src={brand.backGroundImage}
-                            alt="BG"
-                            className="rounded shadow-sm"
-                            style={{
-                              width: "50px",
-                              height: "50px",
-                              objectFit: "cover",
-                            }}
-                          />
-                        )}
-                      </td>
+  <td>
+    <span className="badge bg-light text-dark">
+      {brand.categoryName || "—"}
+    </span>
+  </td>
 
-                      <td className="text-center pe-4">
-                        <button
-                          className="btn btn-sm btn-outline-primary me-2"
-                          onClick={() => setViewBrand(brand)}
-                          title="View Details"
-                        >
-                          👁️
-                        </button>
+  <td>
+    <span className="badge bg-secondary">
+      {brand.subCategoryName || "—"}
+    </span>
+  </td>
 
-                        <button
-                          className="btn btn-sm btn-outline-info me-2"
-                          onClick={() =>
-                            setEditBrand({
-                              ...brand,
-                              newBrandImageFile: null,
-                              newBackgroundFile: null,
-                            })
-                          }
-                          title="Edit Brand"
-                        >
-                          ✏️
-                        </button>
+  <td>
+    {brand.brandImage && (
+      <img
+        src={brand.brandImage}
+        alt="Brand"
+        className="rounded shadow-sm"
+        style={{ width: 45, height: 45, objectFit: "cover" }}
+      />
+    )}
+  </td>
 
-                        <button
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() => setDeleteBrand(brand)}
-                          title="Delete Brand"
-                        >
-                          🗑️
-                        </button>
-                      </td>
-                    </tr>
+  <td>
+    {brand.backGroundImage && (
+      <img
+        src={brand.backGroundImage}
+        alt="BG"
+        className="rounded shadow-sm"
+        style={{ width: 45, height: 45, objectFit: "cover" }}
+      />
+    )}
+  </td>
+
+  <td className="text-center pe-4">
+    <button
+      className="btn btn-sm btn-outline-primary me-2"
+      onClick={() => setViewBrand(brand)}
+    >
+      👁️
+    </button>
+
+    <button
+      className="btn btn-sm btn-outline-info me-2"
+     onClick={() => {
+  setUploading(false);
+  setProgress(0);
+
+  setEditBrand({
+    ...brand,
+    newBrandImageFile: null,
+    newBackgroundFile: null,
+  });
+}}
+
+    >
+      ✏️
+    </button>
+
+    <button
+      className="btn btn-sm btn-outline-danger"
+      onClick={() => setDeleteBrand(brand)}
+    >
+      🗑️
+    </button>
+  </td>
+</tr>
+
                   ))
                 ) : (
                   <tr>
@@ -355,7 +409,15 @@ const BrandList = () => {
       {showAddModal && (
         <ModalWrapper title="Add New Brand" onClose={() => setShowAddModal(false)}>
           <form onSubmit={handleAddSubmit}>
-            <BrandForm brand={newBrand} setBrand={setNewBrand} uploading={uploading} />
+           <BrandForm
+  brand={newBrand}
+  setBrand={setNewBrand}
+  uploading={uploading}
+  categories={categories}
+  subCategories={subCategories}
+  setSelectedCategory={setSelectedCategory}
+/>
+
             <div className="text-end mt-4 pt-2 border-top">
               <button className="btn btn-outline-secondary me-2 rounded-pill" type="button" onClick={() => setShowAddModal(false)}>
                 Cancel
@@ -370,16 +432,33 @@ const BrandList = () => {
 
       {/* --- Edit Brand Modal --- */}
       {editBrand && (
-        <ModalWrapper title="Edit Brand" onClose={() => setEditBrand(null)}>
+        <ModalWrapper title="Edit Brand" onClose={() => {
+  setEditBrand(null);
+  setUploading(false);
+  setProgress(0);
+}}
+>
           <form onSubmit={handleEditSubmit}>
-            <BrandForm brand={editBrand} setBrand={setEditBrand} uploading={uploading} />
+            <BrandForm
+  brand={editBrand}
+  setBrand={setEditBrand}
+  uploading={uploading}
+  categories={categories}
+  subCategories={subCategories}
+  setSelectedCategory={setSelectedCategory}
+/>
+
             <div className="text-end mt-4 pt-2 border-top">
               <button className="btn btn-outline-secondary me-2 rounded-pill" type="button" onClick={() => setEditBrand(null)}>
                 Cancel
               </button>
-              <button className="btn btn-success rounded-pill" type="submit" disabled={uploading}>
-                {uploading ? "Saving..." : "Save Changes"}
-              </button>
+             <button
+  className="btn btn-success rounded-pill"
+  type="submit"
+>
+  Save Changes
+</button>
+
             </div>
           </form>
         </ModalWrapper>
@@ -411,6 +490,17 @@ const BrandList = () => {
                   />
                 )}
               </div>
+
+              <div className="d-flex justify-content-center gap-3 mb-3 flex-wrap">
+  <span className="badge bg-primary px-3 py-2">
+    {viewBrand.categoryName}
+  </span>
+
+  <span className="badge bg-secondary px-3 py-2">
+    {viewBrand.subCategoryName}
+  </span>
+</div>
+
 
               <div className="text-center">
                 <p className="mb-2 small text-muted">Background Image</p>
@@ -490,22 +580,92 @@ const ModalWrapper = ({ title, onClose, children }) => (
   </div>
 );
 
-// ✅ Brand Form
-const BrandForm = ({ brand, setBrand, uploading }) => (
+
+const BrandForm = ({
+  brand,
+  setBrand,
+  uploading,
+  categories,
+  subCategories,
+  setSelectedCategory,
+}) => (
   <>
+    {/* CATEGORY */}
+    <div className="mb-3">
+      <label className="form-label fw-medium">Category</label>
+      <select
+        className="form-select"
+        value={brand.categoryId}
+        onChange={(e) => {
+          const cat = categories.find(c => c.docId === e.target.value);
+          if (!cat) return;
+
+          setBrand({
+            ...brand,
+            categoryId: cat.docId,
+            categoryName: cat.categoryName,
+            subCategoryId: "",
+            subCategoryName: "",
+          });
+
+          setSelectedCategory(cat.docId);
+        }}
+        required
+      >
+        <option value="">Select Category</option>
+        {categories.map(cat => (
+          <option key={cat.docId} value={cat.docId}>
+            {cat.categoryName}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    {/* SUBCATEGORY */}
+    <div className="mb-3">
+      <label className="form-label fw-medium">Subcategory</label>
+      <select
+        className="form-select"
+        value={brand.subCategoryId}
+        onChange={(e) => {
+          const sub = subCategories.find(s => s.docId === e.target.value);
+          if (!sub) return;
+
+          setBrand({
+            ...brand,
+            subCategoryId: sub.docId,
+            subCategoryName: sub.subCategoryName,
+          });
+        }}
+        required
+        disabled={!subCategories.length}
+      >
+        <option value="">Select Subcategory</option>
+        {subCategories.map(sub => (
+          <option key={sub.docId} value={sub.docId}>
+            {sub.subCategoryName}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    {/* BRAND NAME */}
     <div className="mb-3">
       <label className="form-label fw-medium">Brand Name</label>
       <input
         type="text"
         className="form-control"
         value={brand.brandName}
-        onChange={(e) => setBrand({ ...brand, brandName: e.target.value })}
+        onChange={(e) =>
+          setBrand({ ...brand, brandName: e.target.value })
+        }
         required
       />
     </div>
 
+    {/* BRAND IMAGE */}
     <div className="mb-3 p-3 border rounded-3 bg-white shadow-sm">
-      <label className="form-label fw-medium">Brand Image (Logo)</label>
+      <label className="form-label fw-medium">Brand Image</label>
       <input
         type="file"
         className="form-control mb-2"
@@ -518,16 +678,18 @@ const BrandForm = ({ brand, setBrand, uploading }) => (
           })
         }
       />
-      <small className="text-muted d-block mb-2">OR provide a URL:</small>
       <input
         type="url"
-        placeholder="Enter image URL"
         className="form-control"
+        placeholder="Or enter image URL"
         value={brand.brandImage || ""}
-        onChange={(e) => setBrand({ ...brand, brandImage: e.target.value })}
+        onChange={(e) =>
+          setBrand({ ...brand, brandImage: e.target.value })
+        }
       />
     </div>
 
+    {/* BACKGROUND IMAGE */}
     <div className="mb-3 p-3 border rounded-3 bg-white shadow-sm">
       <label className="form-label fw-medium">Background Image</label>
       <input
@@ -542,17 +704,22 @@ const BrandForm = ({ brand, setBrand, uploading }) => (
           })
         }
       />
-      <small className="text-muted d-block mb-2">OR provide a URL:</small>
       <input
         type="url"
-        placeholder="Enter background image URL"
         className="form-control"
+        placeholder="Or enter background image URL"
         value={brand.backGroundImage || ""}
-        onChange={(e) => setBrand({ ...brand, backGroundImage: e.target.value })}
+        onChange={(e) =>
+          setBrand({ ...brand, backGroundImage: e.target.value })
+        }
       />
     </div>
 
-    {uploading && <div className="alert alert-info py-2 px-3 small">Uploading in progress...</div>}
+    {uploading && (
+      <div className="alert alert-info py-2 px-3 small">
+        Uploading in progress...
+      </div>
+    )}
   </>
 );
 

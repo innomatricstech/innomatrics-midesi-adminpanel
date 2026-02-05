@@ -9,7 +9,7 @@ import {
   updateDoc,
   getDoc,
 } from "../../firebase";
-{/* Add these imports to your existing import statements */}
+
 import {
   RiShoppingBag3Line,
   RiTimeLine,
@@ -21,9 +21,12 @@ import {
   RiArrowDownLine,
   RiCheckLine,
 } from "react-icons/ri";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 
 import ViewOrderModal from "./ViewOrderPage";
 import "bootstrap/dist/css/bootstrap.min.css";
+
 
 /* -------------------------- CONSTANTS -------------------------- */
 const CUSTOMER_COLLECTION_NAME = "customers";
@@ -86,13 +89,19 @@ const ConfirmDeleteModal = ({ order, onClose, onConfirm }) => {
 /* =============================================================
    ORDER PAGE
 ============================================================= */
-const OrderPage = () => {
+const OrderPage = ({ onNavigate }) => {
+
   const [orders, setOrders] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
 
   const [viewOrder, setViewOrder] = useState(null);
   const [deleteOrder, setDeleteOrder] = useState(null);
+
+
+  const handleFilterOrders = (status) => {
+  setSearchTerm(status);
+};
 
   /* -------------------------- FETCH ORDERS -------------------------- */
   const getOrders = useCallback(async () => {
@@ -122,7 +131,7 @@ const OrderPage = () => {
         return orderSnap.docs.map((o) => {
           const data = o.data();
 
-        return {
+ return {
   ...data,
   id: data.orderId || o.id,
   docId: o.id,
@@ -132,6 +141,8 @@ const OrderPage = () => {
   customer: customer.name || "N/A",
   phone: data.phoneNumber ? String(data.phoneNumber) : "N/A",
 
+  // 🔗 REFERRED BY ID (THIS WAS MISSING)
+  referredBy: customer.referredBy || "Direct",
 
   // 💳 UTR
   utr:
@@ -180,6 +191,36 @@ const OrderPage = () => {
       fullOrder: order
     });
   };
+
+const downloadOrdersExcel = () => {
+  if (filteredOrders.length === 0) {
+    alert("No orders to export");
+    return;
+  }
+
+  const excelData = filteredOrders.map((o) => ({
+    "Order ID": o.id,
+    "Customer Name": o.customer,
+    "Customer ID": o.customerId,
+    "Referred By": o.referredBy,
+    "Phone": o.phone,
+    "UTR": o.utr,
+    "Items": o.items,
+    "Total Amount": o.total,
+    "Status": o.status,
+    "Order Date": o.date,
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(excelData);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Orders Report");
+
+  XLSX.writeFile(
+    workbook,
+    `Orders_Report_${new Date().toISOString().slice(0, 10)}.xlsx`
+  );
+};
+
 
   /* -------------------------- EXTRACT PRODUCT DATA -------------------------- */
   const extractProductData = (item) => {
@@ -599,6 +640,15 @@ const OrderPage = () => {
       <div className="container-fluid p-4" style={{ paddingTop: 90 }}>
         <div className="d-flex justify-content-between align-items-center mb-4">
           <h2 className="fw-bold text-primary mb-0">Order Management</h2>
+
+<button
+  className="btn btn-outline-success"
+  onClick={downloadOrdersExcel}
+>
+  📊 Export Orders
+</button>
+
+
         </div>
 
       {/* Order Stats */}
@@ -877,58 +927,65 @@ const OrderPage = () => {
                       </span>
                     </td>
 
-                    <td className="text-center">
-                      {/* ✅ ACCEPT BUTTON ONLY WHEN PENDING */}
-                      {order.status === "Pending" && (
-                        <button
-                          className="btn btn-sm btn-success me-2"
-                          onClick={() => handleAcceptOrderWithRestock(order)}
-                          title="Accept Order (Auto-restock if needed)"
-                        >
-                          ✅ Accept
-                        </button>
-                      )}
+                   <td className="text-center">
+  <div className="d-flex justify-content-center align-items-center gap-2 flex-wrap">
 
-                      {/* ✅ STATUS DROPDOWN (ALWAYS) */}
-                      <select
-                        className="form-select form-select-sm d-inline-block me-2"
-                        style={{ width: "150px" }}
-                        value={order.status}
-                        onChange={(e) =>
-                          handleStatusChange(
-                            order.docId,
-                            order.customerId,
-                            e.target.value
-                          )
-                        }
-                      >
-                        <option value="Pending">Pending</option>
-                        <option value="Shipped">Shipped</option>
-                        <option value="Delivered">Delivered</option>
-                        <option value="Canceled">Canceled</option>
-                      </select>
+    {/* ACCEPT BUTTON (Pending only) */}
+    {order.status === "Pending" && (
+      <button
+        className="btn btn-success btn-sm d-flex align-items-center gap-1 shadow-sm"
+        onClick={() => handleAcceptOrderWithRestock(order)}
+        title="Accept Order"
+      >
+        <RiCheckLine />
+        <span className="d-none d-md-inline">Accept</span>
+      </button>
+    )}
 
-                      {/* View */}
-                      <button
-                        className="btn btn-sm btn-outline-primary me-1"
-                        onClick={() => setViewOrder({
-                          customerId: order.customerId,
-                          docId: order.docId
-                        })}
-                        title="View Details"
-                      >
-                        👁️
-                      </button>
+    {/* STATUS DROPDOWN */}
+    <select
+      className="form-select form-select-sm shadow-sm"
+      style={{ width: "130px" }}
+      value={order.status}
+      onChange={(e) =>
+        handleStatusChange(
+          order.docId,
+          order.customerId,
+          e.target.value
+        )
+      }
+    >
+      <option value="Pending">Pending</option>
+      <option value="Shipped">Shipped</option>
+      <option value="Delivered">Delivered</option>
+      <option value="Canceled">Canceled</option>
+    </select>
 
-                      {/* Delete */}
-                      <button
-                        className="btn btn-sm btn-outline-danger"
-                        onClick={() => setDeleteOrder(order)}
-                        title="Delete Order"
-                      >
-                        🗑️
-                      </button>
-                    </td>
+    {/* VIEW BUTTON */}
+    <button
+      className="btn btn-outline-primary btn-sm shadow-sm"
+      onClick={() =>
+        setViewOrder({
+          customerId: order.customerId,
+          docId: order.docId,
+        })
+      }
+      title="View Order"
+    >
+      <RiShoppingBag3Line />
+    </button>
+
+    {/* DELETE BUTTON */}
+    <button
+      className="btn btn-outline-danger btn-sm shadow-sm"
+      onClick={() => setDeleteOrder(order)}
+      title="Delete Order"
+    >
+      <RiCloseCircleLine />
+    </button>
+  </div>
+</td>
+
                   </tr>
                 ))}
 

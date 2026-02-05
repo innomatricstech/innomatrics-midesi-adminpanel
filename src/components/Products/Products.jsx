@@ -43,6 +43,69 @@ const ProductList = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [currentAdminUser, setCurrentAdminUser] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [subCategories, setSubCategories] = useState([]);
+
+const fetchAllProducts = async () => {
+  try {
+    setLoading(true);
+
+    const snap = await getDocs(collection(db, "products"));
+
+    const list = snap.docs.map((d) => {
+      const data = d.data();
+
+      const priceVal = Number(data.price || 0);
+      const offerVal = Number(data.offerPrice ?? priceVal);
+
+      const images = Array.isArray(data.imageUrl) ? data.imageUrl : [];
+
+      const stockNum = Number(data.stock ?? data.productsCount ?? 0);
+
+      return {
+        id: d.id,
+        productId: data.productId || d.id,
+
+        image: images[0] || "📦",
+        imageUrl: images,
+        videoUrl: Array.isArray(data.videoUrl) ? data.videoUrl : [],
+
+        name: data.title || "Unknown Product",
+        price: `₹${priceVal.toFixed(2)}`,
+        offerPriceRaw: offerVal,
+        sale:
+          priceVal > 0
+            ? Math.round(((priceVal - offerVal) / priceVal) * 100)
+            : 0,
+
+        quantity: data.netVolume || "N/A",
+        stockCount: stockNum,
+        stock: stockNum > 0 ? "In stock" : "Out of stock",
+
+        description: data.description || "",
+
+        categoryId: data.categoryId || "",
+        categoryName: data.categoryName || "N/A",
+
+        subCategoryId: data.subCategoryId || "",
+        subCategoryName: data.subCategoryName || "N/A",
+
+        brandId: data.brandId || "",
+        brandName: data.brandName || "N/A",
+
+        sellerId: data.sellerId || "",
+        taxAmount: Number(data.taxAmount || 0),
+
+        keywords: data.keywords || [],
+      };
+    });
+
+    setProducts(list);
+  } catch (e) {
+    console.error("Fetch products error:", e);
+  } finally {
+    setLoading(false);
+  }
+};
 
 
   /* Auth listener + fetch products */
@@ -103,10 +166,15 @@ const ProductList = () => {
             additionalInformation: data.additionalInformation || "",
             shelfLife: data.shelfLife || "",
 
-            categoryId: data.categoryId || "",
-            brandId: data.brandId || "",
-            categoryName: data.categoryName || "N/A",
-            brandName: data.brandName || "N/A",
+          categoryId: data.categoryId || "",
+  categoryName: data.categoryName || "N/A",
+
+  // ✅ SUBCATEGORY (FIX)
+  subCategoryId: data.subCategoryId || "",
+  subCategoryName: data.subCategoryName || "N/A",
+
+  brandId: data.brandId || "",
+  brandName: data.brandName || "N/A",
 
             sellerId: data.sellerId || "",
 
@@ -140,17 +208,30 @@ const ProductList = () => {
   /* Add product */
   const handleAddProduct = async (newProductData) => {
     try {
-      const firestoreData = {
-        ...newProductData,
-        price: Number(newProductData.price),
-        offerPrice: Number(newProductData.offerPrice || 0),
-        stock: Number(newProductData.stock),
-        rating: Number(newProductData.rating || 0),
-        taxAmount: Number(newProductData.taxAmount || 0),
+     const firestoreData = {
+  ...newProductData,
 
+  // ✅ CATEGORY
+  categoryId: newProductData.categoryId,
+  categoryName: newProductData.categoryName,
 
-        keywords: generateKeywords(newProductData.title),
-      };
+  // ✅ SUBCATEGORY (FIX)
+  subCategoryId: newProductData.subCategoryId,
+  subCategoryName: newProductData.subCategoryName,
+
+  // ✅ BRAND
+  brandId: newProductData.brandId,
+  brandName: newProductData.brandName,
+
+  price: Number(newProductData.price),
+  offerPrice: Number(newProductData.offerPrice || 0),
+  stock: Number(newProductData.stock),
+  rating: Number(newProductData.rating || 0),
+  taxAmount: Number(newProductData.taxAmount || 0),
+
+  keywords: generateKeywords(newProductData.title),
+};
+
 
       const docRef = await addDoc(collection(db, "products"), firestoreData);
       await updateDoc(docRef, { productId: docRef.id });
@@ -220,45 +301,37 @@ const ProductList = () => {
     try {
       const productRef = doc(db, "products", updatedProductData.id);
 
-      const firestoreData = {
-        title: updatedProductData.title,
+    const firestoreData = {
+  title: updatedProductData.title,
 
-        keywords: generateKeywords(updatedProductData.title),
+  // ✅ CATEGORY
+  categoryId: updatedProductData.categoryId,
+  categoryName: updatedProductData.categoryName,
 
-        description: updatedProductData.description,
-        price: Number(updatedProductData.price),
-        offerPrice: Number(updatedProductData.offerPrice || 0),
+  // ✅ SUBCATEGORY (FIX)
+  subCategoryId: updatedProductData.subCategoryId,
+  subCategoryName: updatedProductData.subCategoryName,
 
-        netVolume: updatedProductData.netVolume || "",
-        dosage: updatedProductData.dosage || "",
-        ingredients: updatedProductData.ingredients || "",
-        composition: updatedProductData.composition || "",
-        storage: updatedProductData.storage || "",
-        manufacturedBy: updatedProductData.manufacturedBy || "",
-        marketedBy: updatedProductData.marketedBy || "",
-        shelfLife: updatedProductData.shelfLife || "",
-        additionalInformation: updatedProductData.additionalInformation || "",
+  // ✅ BRAND
+  brandId: updatedProductData.brandId,
+  brandName: updatedProductData.brandName,
 
-        stock: Number(updatedProductData.stock || 0),
-        taxAmount: Number(updatedProductData.taxAmount || 0),
-        cashOnDelivery: updatedProductData.cashOnDelivery || "No",
-        isBestSelling: Boolean(updatedProductData.isBestSelling),
-        rating: Number(updatedProductData.rating || 0),
+  description: updatedProductData.description,
+  price: Number(updatedProductData.price),
+  offerPrice: Number(updatedProductData.offerPrice || 0),
 
-        deliveryCharges: Number(updatedProductData.deliveryCharges || 0),
-        productCode: updatedProductData.productCode || "",
-        hsnCode: updatedProductData.hsnCode || "",
+  netVolume: updatedProductData.netVolume || "",
+  dosage: updatedProductData.dosage || "",
+  ingredients: updatedProductData.ingredients || "",
 
-        categoryId: updatedProductData.categoryId,
-        brandId: updatedProductData.brandId,
-        categoryName: updatedProductData.categoryName || "",
-        brandName: updatedProductData.brandName || "",
+  stock: Number(updatedProductData.stock || 0),
+  taxAmount: Number(updatedProductData.taxAmount || 0),
 
-        sellerId: updatedProductData.sellerid || updatedProductData.sellerId || "",
+  imageUrl: updatedProductData.imageUrl || [],
+  videoUrl: updatedProductData.videoUrl || [],
 
-        imageUrl: updatedProductData.imageUrl || [],
-        videoUrl: updatedProductData.videoUrl || [],
-      };
+  keywords: generateKeywords(updatedProductData.title),
+};
 
       await updateDoc(productRef, firestoreData);
 
@@ -387,6 +460,17 @@ const categories = [
         
 
  <div className="d-flex justify-content-end align-items-center gap-3 mb-4 flex-wrap">
+
+  <button
+    className="btn btn-outline-secondary rounded-pill px-4 py-2 shadow-sm d-flex align-items-center gap-2"
+    onClick={fetchAllProducts}
+    disabled={loading}
+  >
+    <i className="bi bi-arrow-clockwise"></i>
+    <span className="fw-semibold">
+      {loading ? "Refreshing..." : "Refresh"}
+    </span>
+  </button>
 
   {/* Filter Dropdown */}
   <div className="dropdown">

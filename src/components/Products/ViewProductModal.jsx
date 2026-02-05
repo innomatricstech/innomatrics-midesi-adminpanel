@@ -227,18 +227,31 @@ const ViewProductModal = ({ product, onClose }) => {
                   <div className="section-card">
                     <h6 className="section-title">Categorization</h6>
                     <ul className="list-group list-group-flush">
-                      <li className="list-group-item d-flex justify-content-between">
-                        Category <strong>{product.categoryName}</strong>
-                      </li>
-                      <li className="list-group-item d-flex justify-content-between">
-                        Brand <strong>{product.brandName}</strong>
-                      </li>
-                      <li className="list-group-item d-flex justify-content-between">
-                        Category ID <strong>{product.categoryId}</strong>
-                      </li>
-                      <li className="list-group-item d-flex justify-content-between">
-                        Brand ID <strong>{product.brandId}</strong>
-                      </li>
+                     <li className="list-group-item d-flex justify-content-between">
+  Category <strong>{product.categoryName || "—"}</strong>
+</li>
+
+<li className="list-group-item d-flex justify-content-between">
+  Subcategory <strong>{product.subCategoryName || "—"}</strong>
+</li>
+
+
+<li className="list-group-item d-flex justify-content-between">
+  Brand <strong>{product.brandName || "—"}</strong>
+</li>
+
+<li className="list-group-item d-flex justify-content-between">
+  Category ID <strong>{product.categoryId}</strong>
+</li>
+
+<li className="list-group-item d-flex justify-content-between">
+  Subcategory ID <strong>{product.subCategoryId}</strong>
+</li>
+
+<li className="list-group-item d-flex justify-content-between">
+  Brand ID <strong>{product.brandId}</strong>
+</li>
+
                     </ul>
                   </div>
                 </div>

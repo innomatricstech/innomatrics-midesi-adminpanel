@@ -17,10 +17,13 @@ import RechargePlans from './components/RechargePlan';
 import PartnerManagement from './components/PartnerManagement';
 import CustomerDetails from './components/Customer/Customer';
 import StockNotifier from './components/StockNotifier.jsx';
+import SubCategoryList from './components/SubCategoryList.jsx';
 // --- NEW IMPORTS ---
 import DashboardRouter from './components/DashboardRouter.jsx';
 import LoginPage from './components/Auth/LoginPage';
 import LogoutConfirmation from './components/Auth/LogoutConfirmation.jsx'; // <-- NEW IMPORT
+
+import ExportOrders from './components/Orders/ExportOrders.jsx';
 // ⚠️ Adjust path to your Firebase config file
 import { auth, onAuthStateChanged, signOut } from "./firebase"; 
 // -------------------
@@ -71,8 +74,11 @@ function App() {
   return <DashboardRouter
  onNavigate={setCurrentView} />;
 
-    if (currentView === 'Orders') return <OrderPage />;
+    if (currentView === 'Orders')
+  return <OrderPage onNavigate={setCurrentView} />;
+
     if (currentView === 'Category') return <CategoryList />;
+    if (currentView === 'Sub Category') return <SubCategoryList />;
     if (currentView === 'Brands') return <BrandList />;
     if (currentView === 'Banners') return <BannerList />;
     if (currentView === 'Youtube Videos') return <VideoList/>;
@@ -84,6 +90,7 @@ function App() {
     if (currentView === 'Recharge Plan') return <RechargePlans />;
     if (currentView === 'Partner Management') return <PartnerManagement />;
     if (currentView === 'Customer Details') return <CustomerDetails />;
+      if (currentView === 'Export Orders') return <ExportOrders />;
     
   };
   

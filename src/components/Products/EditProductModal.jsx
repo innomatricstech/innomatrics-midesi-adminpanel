@@ -42,7 +42,9 @@ const useBrandFetcher = () => {
         setBrands(
           snap.docs.map((d) => ({
             id: d.id,
-            name: d.data().brandName || "Unnamed Brand",
+            name: d.data().brandName,
+            categoryId: d.data().categoryId,
+            subCategoryId: d.data().subCategoryId,
           }))
         );
       } catch (err) {
@@ -61,6 +63,9 @@ const useBrandFetcher = () => {
 const EditProductModal = ({ product, onClose, onSave }) => {
   const { categories, loading: loadingCategories } = useCategoryFetcher();
   const { brands, loading: loadingBrands } = useBrandFetcher();
+  const [subCategories, setSubCategories] = useState([]);
+const [filteredBrands, setFilteredBrands] = useState([]);
+
 
   const isMounted = useRef(true);
   useEffect(() => () => (isMounted.current = false), []);
@@ -71,47 +76,54 @@ const EditProductModal = ({ product, onClose, onSave }) => {
     return Number(price.toString().replace(/₹|,/g, "")) || 0;
   };
 
-  // ✅ FORM INITIAL VALUES
-  const [form, setForm] = useState({
-    id: product.id,
+  
+const [form, setForm] = useState({
+  id: product.id,
 
-    title: product.name || "",
-    description: product.description || "",
+  title: product.name || "",
+  description: product.description || "",
 
-    price: extractPrice(product.price),
-    offerPrice: Number(product.offerPriceRaw || product.offerPrice || 0),
+  price: extractPrice(product.price),
+  offerPrice: Number(product.offerPriceRaw || product.offerPrice || 0),
 
-    netVolume: product.netVolume || product.quantity || "",
-    dosage: product.dosage || "",
-    ingredients: product.ingredients || "",
-    composition: product.composition || "",
-    storage: product.storage || "",
-    manufacturedBy: product.manufacturedBy || "",
-    marketedBy: product.marketedBy || "",
-    shelfLife: product.shelfLife || "",
-    additionalInformation: product.additionalInformation || "",
+  netVolume: product.netVolume || product.quantity || "",
+  dosage: product.dosage || "",
+  ingredients: product.ingredients || "",
+  composition: product.composition || "",
+  storage: product.storage || "",
+  manufacturedBy: product.manufacturedBy || "",
+  marketedBy: product.marketedBy || "",
+  shelfLife: product.shelfLife || "",
+  additionalInformation: product.additionalInformation || "",
 
-    stock: Number(product.stockCount ?? 0),
-    taxAmount: Number(product.taxAmount || 0),
-    cashOnDelivery: product.cashOnDelivery || "Yes",
-    isBestSelling: Boolean(product.isBestSelling),
-    rating: Number(product.rating || 0),
+  stock: Number(product.stockCount ?? 0),
+  taxAmount: Number(product.taxAmount || 0),
+  cashOnDelivery: product.cashOnDelivery || "Yes",
+  isBestSelling: Boolean(product.isBestSelling),
+  rating: Number(product.rating || 0),
 
-    categoryId: product.categoryId || "",
-    brandId: product.brandId || "",
-    categoryName: product.categoryName || "",
-    brandName: product.brandName || "",
+  // ✅ CATEGORY
+  categoryId: product.categoryId || "",
+  categoryName: product.categoryName || "",
 
-    sellerid: product.sellerId || "",
+  // ✅ SUBCATEGORY (THIS WAS MISSING)
+  subCategoryId: product.subCategoryId || "",
+  subCategoryName: product.subCategoryName || "",
 
-    // ✅ NEW FIELDS
-    deliveryCharges: product.deliveryCharges || 0,
-    productCode: product.productCode || "",
-    hsnCode: product.hsnCode || "",
+  // ✅ BRAND
+  brandId: product.brandId || "",
+  brandName: product.brandName || "",
 
-    imageUrl: Array.isArray(product.imageUrl) ? product.imageUrl : [],
-    videoUrl: Array.isArray(product.videoUrl) ? product.videoUrl : [],
-  });
+  sellerid: product.sellerId || "",
+
+  deliveryCharges: product.deliveryCharges || 0,
+  productCode: product.productCode || "",
+  hsnCode: product.hsnCode || "",
+
+  imageUrl: Array.isArray(product.imageUrl) ? product.imageUrl : [],
+  videoUrl: Array.isArray(product.videoUrl) ? product.videoUrl : [],
+});
+
 
   const [imageFiles, setImageFiles] = useState([]);
   const [imageUrlsText, setImageUrlsText] = useState("");
@@ -119,6 +131,66 @@ const EditProductModal = ({ product, onClose, onSave }) => {
   const [videoUrlsText, setVideoUrlsText] = useState("");
 
   const [isUploading, setIsUploading] = useState(false);
+
+  
+useEffect(() => {
+  const fetchSubCategories = async () => {
+    if (!form.categoryId) {
+      setSubCategories([]);
+      return;
+    }
+
+    const snap = await getDocs(
+      collection(db, "category", form.categoryId, "subcategories")
+    );
+
+    const list = snap.docs.map((d) => ({
+      id: d.id,
+      name: d.data().subCategoryName,
+    }));
+
+    setSubCategories(list);
+
+    // ✅ KEEP EXISTING SUBCATEGORY IF IT EXISTS
+    if (form.subCategoryId && list.some(s => s.id === form.subCategoryId)) {
+      return;
+    }
+
+    // ❌ only reset if invalid
+    setForm((p) => ({
+      ...p,
+      subCategoryId: "",
+      subCategoryName: "",
+      brandId: "",
+      brandName: "",
+    }));
+  };
+
+  fetchSubCategories();
+}, [form.categoryId]);
+
+useEffect(() => {
+  if (!form.subCategoryId) {
+    setFilteredBrands([]);
+    return;
+  }
+
+  const matched = brands.filter(
+    (b) =>
+      b.categoryId === form.categoryId &&
+      b.subCategoryId === form.subCategoryId
+  );
+
+  setFilteredBrands(matched);
+
+  // reset brand when subcategory changes
+  setForm((p) => ({
+    ...p,
+    brandId: "",
+    brandName: "",
+  }));
+}, [form.subCategoryId, form.categoryId, brands]);
+
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -333,40 +405,78 @@ const EditProductModal = ({ product, onClose, onSave }) => {
                 <h6 className="text-info fw-bold mb-3">Categorization</h6>
 
                 <div className="row g-3">
-                  <div className="col-md-6">
-                    <label>Category</label>
-                    <select
-                      className="form-select"
-                      name="categoryId"
-                      value={form.categoryId}
-                      onChange={handleChange}
-                      disabled={loadingCategories}
-                      required
-                    >
-                      <option value="">Select Category</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
 
-                  <div className="col-md-6">
-                    <label>Brand</label>
-                    <select
-                      className="form-select"
-                      name="brandId"
-                      value={form.brandId}
-                      onChange={handleChange}
-                      disabled={loadingBrands}
-                      required
-                    >
-                      <option value="">Select Brand</option>
-                      {brands.map((b) => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+  {/* CATEGORY */}
+  <div className="col-md-4">
+    <label>Category</label>
+    <select
+      className="form-select"
+      name="categoryId"
+      value={form.categoryId}
+      onChange={handleChange}
+      required
+    >
+      <option value="">Select Category</option>
+      {categories.map(c => (
+        <option key={c.id} value={c.id}>{c.name}</option>
+      ))}
+    </select>
+  </div>
+
+  {/* SUBCATEGORY */}
+  <div className="col-md-4">
+    <label>Subcategory</label>
+    <select
+      className="form-select"
+      value={form.subCategoryId}
+      disabled={!subCategories.length}
+      onChange={(e) => {
+        const sub = subCategories.find(s => s.id === e.target.value);
+        setForm(p => ({
+          ...p,
+          subCategoryId: sub?.id || "",
+          subCategoryName: sub?.name || "",
+        }));
+      }}
+      required
+    >
+      <option value="">
+        {form.categoryId ? "Select Subcategory" : "Select Category First"}
+      </option>
+      {subCategories.map(s => (
+        <option key={s.id} value={s.id}>{s.name}</option>
+      ))}
+    </select>
+  </div>
+
+  {/* BRAND */}
+  <div className="col-md-4">
+    <label>Brand</label>
+    <select
+      className="form-select"
+      value={form.brandId}
+      disabled={!filteredBrands.length}
+      onChange={(e) => {
+        const b = filteredBrands.find(x => x.id === e.target.value);
+        setForm(p => ({
+          ...p,
+          brandId: b?.id || "",
+          brandName: b?.name || "",
+        }));
+      }}
+      required
+    >
+      <option value="">
+        {form.subCategoryId ? "Select Brand" : "Select Subcategory First"}
+      </option>
+      {filteredBrands.map(b => (
+        <option key={b.id} value={b.id}>{b.name}</option>
+      ))}
+    </select>
+  </div>
+
+</div>
+
               </div>
 
               {/* INVENTORY CARD */}

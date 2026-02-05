@@ -21,12 +21,6 @@ const [searchTerm, setSearchTerm] = useState("");
 const [rejectModal, setRejectModal] = useState(null);
 const [rejectReason, setRejectReason] = useState("");
 
-
-
-
-
-
-
     /* =========================
       FETCH PARTNERS
     ========================= */
@@ -187,36 +181,39 @@ const [rejectReason, setRejectReason] = useState("");
     /* =========================
       PARTNER UPDATE
     ========================= */
-    const handlePartnerChange = async (r, partnerId) => {
-      try {
-        const partner = partners.find((p) => p.id === partnerId);
-        const requestRef = doc(
-          db,
-          `customers/${r.userId}/rechargeRequest`,
-          r.id
-        );
+    /* =========================
+  PARTNER UPDATE
+========================= */
+const handlePartnerChange = async (r, partnerId) => {
+  try {
+    const partner = partners.find((p) => p.id === partnerId);
+    const requestRef = doc(
+      db,
+      `customers/${r.userId}/rechargeRequest`,
+      r.id
+    );
 
-        await updateDoc(requestRef, {
-          partnerId,
-          partnerName: partner?.name || "",
-        });
+    await updateDoc(requestRef, {
+      partnerId,
+      partnerName: partner?.name || "",
+    });
 
-        setRequests((prev) =>
-          prev.map((req) =>
-            req.id === r.id && req.userId === r.userId
-              ? {
-                  ...req,
-                  partnerId,
-                  partnerName: partner?.name || "",
-                }
-              : req
-          )
-        );
-      } catch (err) {
-        console.error("Error updating partner:", err);
-        alert("Failed to update partner");
-      }
-    };
+    setRequests((prev) =>
+      prev.map((req) =>
+        req.id === r.id && req.userId === r.userId
+          ? {
+              ...req,
+              partnerId,
+              partnerName: partner?.name || "",
+            }
+          : req
+      )
+    );
+  } catch (err) {
+    console.error("Error updating partner:", err);
+    alert("Failed to update partner");
+  }
+};
 
     /* =========================
       EXCEL EXPORT
@@ -395,21 +392,15 @@ const [rejectReason, setRejectReason] = useState("");
 
                         {/* Partner Dropdown */}
                         <td>
-                          <select
-                            className="form-select form-select-sm"
-                            value={r.partnerId}
-                            onChange={(e) =>
-                              handlePartnerChange(r, e.target.value)
-                            }
-                          >
-                            <option value="">Select Partner</option>
-                            {partners.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
+  {r.partnerName ? (
+    <span className="fw-semibold text-success">
+      {r.partnerName}
+    </span>
+  ) : (
+    <span className="text-muted">—</span>
+  )}
+</td>
+
 
                         {/* Status */}
                         <td>
